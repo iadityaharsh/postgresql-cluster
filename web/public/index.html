@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostgreSQL Cluster Monitor</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* === Theme variables === */
+    :root, [data-theme="dark"] {
+      --bg-base: #181818; --bg-panel: #1e1e1e; --bg-topbar: #2a2a2a; --bg-sidebar: #161616;
+      --bg-input: #141414; --bg-task-log: #141414; --bg-hover: rgba(255,255,255,0.04);
+      --bg-active: rgba(249,115,22,0.15); --bg-btn: #2a2a2a; --bg-btn-hover: #383838;
+      --border: #383838; --border-subtle: #2a2a2a;
+      --text: #d4d4d4; --text-bright: #eeeeee; --text-muted: #a0a0a0; --text-dim: #787878; --text-faint: #585858;
+      --accent: #f97316; --accent-hover: #fb923c;
+      --ok: #50c878; --warn: #f0ad4e; --err: #e74c3c; --info: #fb923c; --purple: #bb86fc;
+      --toast-ok-bg: #2d6a4f; --toast-ok-text: #b7e4c7; --toast-ok-border: #40916c;
+      --toast-err-bg: #6a2d2d; --toast-err-text: #e4b7b7; --toast-err-border: #914040;
+      --overlay: rgba(0,0,0,0.6); --shadow: rgba(0,0,0,0.5);
+      --gauge-track: #2a2a2a; --th-bg: rgba(0,0,0,0.15); --row-hover: rgba(249,115,22,0.04);
+    }
+    [data-theme="light"] {
+      --bg-base: #f0f0f5; --bg-panel: #ffffff; --bg-topbar: #ffffff; --bg-sidebar: #f5f5fa;
+      --bg-input: #ffffff; --bg-task-log: #f8f8fc; --bg-hover: rgba(0,0,0,0.04);
+      --bg-active: rgba(249,115,22,0.12); --bg-btn: #e8e8f0; --bg-btn-hover: #d8d8e4;
+      --border: #d0d0dc; --border-subtle: #e0e0ea;
+      --text: #3a3a4a; --text-bright: #1a1a2a; --text-muted: #6a6a80; --text-dim: #8888a0; --text-faint: #a0a0b4;
+      --accent: #ea580c; --accent-hover: #c2410c;
+      --ok: #2d9655; --warn: #c88d20; --err: #d63030; --info: #ea580c; --purple: #8b5cf6;
+      --toast-ok-bg: #d4edda; --toast-ok-text: #155724; --toast-ok-border: #a3d9b1;
+      --toast-err-bg: #f8d7da; --toast-err-text: #721c24; --toast-err-border: #f5c6cb;
+      --overlay: rgba(0,0,0,0.3); --shadow: rgba(0,0,0,0.15);
+      --gauge-track: #e0e0ea; --th-bg: rgba(0,0,0,0.04); --row-hover: rgba(249,115,22,0.04);
+    }
+    [data-theme="nord-dark"] {
+      --bg-base: #2e3440; --bg-panel: #3b4252; --bg-topbar: #434c5e; --bg-sidebar: #2e3440;
+      --bg-input: #2e3440; --bg-task-log: #2e3440; --bg-hover: rgba(255,255,255,0.05);
+      --bg-active: rgba(208,135,112,0.18); --bg-btn: #434c5e; --bg-btn-hover: #4c566a;
+      --border: #4c566a; --border-subtle: #3b4252;
+      --text: #d8dee9; --text-bright: #eceff4; --text-muted: #a0aec0; --text-dim: #7b88a1; --text-faint: #5c6a82;
+      --accent: #d08770; --accent-hover: #c07860;
+      --ok: #a3be8c; --warn: #ebcb8b; --err: #bf616a; --info: #d08770; --purple: #b48ead;
+      --toast-ok-bg: #3b4a3e; --toast-ok-text: #a3be8c; --toast-ok-border: #5a7a5e;
+      --toast-err-bg: #4a3638; --toast-err-text: #bf616a; --toast-err-border: #7a4a4e;
+      --overlay: rgba(0,0,0,0.5); --shadow: rgba(0,0,0,0.4);
+      --gauge-track: #434c5e; --th-bg: rgba(0,0,0,0.12); --row-hover: rgba(208,135,112,0.05);
+    }
+    [data-theme="nord-light"] {
+      --bg-base: #eceff4; --bg-panel: #ffffff; --bg-topbar: #e5e9f0; --bg-sidebar: #e5e9f0;
+      --bg-input: #ffffff; --bg-task-log: #f0f4f8; --bg-hover: rgba(0,0,0,0.03);
+      --bg-active: rgba(191,97,106,0.12); --bg-btn: #d8dee9; --bg-btn-hover: #c8d0de;
+      --border: #c8d0de; --border-subtle: #d8dee9;
+      --text: #3b4252; --text-bright: #2e3440; --text-muted: #5e6a80; --text-dim: #7b88a1; --text-faint: #9aa4b8;
+      --accent: #c06840; --accent-hover: #a85830;
+      --ok: #689a5b; --warn: #c08b30; --err: #bf616a; --info: #c06840; --purple: #b48ead;
+      --toast-ok-bg: #d8edda; --toast-ok-text: #2a5a2e; --toast-ok-border: #a3d4a8;
+      --toast-err-bg: #f0d0d4; --toast-err-text: #6a2028; --toast-err-border: #daa0a8;
+      --overlay: rgba(0,0,0,0.25); --shadow: rgba(0,0,0,0.1);
+      --gauge-track: #d8dee9; --th-bg: rgba(0,0,0,0.03); --row-hover: rgba(94,129,172,0.05);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; background: var(--bg-base); color: var(--text); font-size: 13px; overflow: hidden; height: 100vh; }
+
+    /* === Layout === */
+    .layout { display: flex; flex-direction: column; height: 100vh; }
+    .topbar { height: 48px; flex-shrink: 0; background: var(--bg-topbar); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 10; }
+    .body-row { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border-subtle); overflow-y: auto; padding: 0; flex-shrink: 0; min-width: 180px; max-width: 500px; position: relative; }
+    .sidebar-resize { position: absolute; top: 0; right: -3px; width: 6px; height: 100%; cursor: col-resize; z-index: 5; }
+    .sidebar-resize:hover, .sidebar-resize.dragging { background: rgba(249,115,22,0.4); }
+    .main { background: var(--bg-base); overflow-y: auto; flex: 1; min-width: 0; }
+
+    /* === Topbar === */
+    .topbar-left { display: flex; align-items: center; gap: 10px; }
+    .topbar-logo { width: 30px; height: 30px; background: var(--accent); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 16px; }
+    .topbar-title { font-size: 16px; font-weight: 600; color: var(--text-bright); letter-spacing: 0.3px; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--text-muted); }
+    .topbar-status { display: flex; align-items: center; gap: 6px; }
+    .status-indicator { width: 8px; height: 8px; border-radius: 50%; }
+    .status-indicator.ok { background: var(--ok); box-shadow: 0 0 6px rgba(80,200,120,0.4); }
+    .status-indicator.warn { background: var(--warn); box-shadow: 0 0 6px rgba(240,173,78,0.4); }
+    .status-indicator.err { background: var(--err); box-shadow: 0 0 6px rgba(231,76,60,0.4); }
+
+    /* === Sidebar Tree (Proxmox-style) === */
+    .tree-search { padding: 6px 8px; }
+    .tree-search input { width: 100%; padding: 5px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; color: var(--text); font-size: 12px; font-family: inherit; }
+    .tree-search input:focus { outline: none; border-color: var(--accent); }
+    .tree-search input::placeholder { color: var(--text-faint); }
+    .tree-node { user-select: none; }
+    .tree-row { display: flex; align-items: center; height: 26px; cursor: pointer; transition: background 0.1s; padding-right: 8px; }
+    .tree-row:hover { background: var(--bg-hover); }
+    .tree-row.active { background: var(--bg-active); }
+    .tree-indent { display: inline-block; width: 20px; flex-shrink: 0; }
+    .tree-arrow { width: 18px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 8px; color: var(--text-dim); transition: transform 0.15s; }
+    .tree-arrow.open { transform: rotate(90deg); }
+    .tree-arrow.hidden { visibility: hidden; }
+    .tree-icon { width: 20px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .tree-icon svg, .tree-icon img { width: 16px; height: 16px; }
+    .tree-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; padding-left: 4px; }
+    .tree-row.active .tree-label { color: var(--text-bright); font-weight: 500; }
+    .tree-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; font-weight: 600; margin-left: 4px; letter-spacing: 0.3px; }
+    .tree-badge.leader { background: rgba(80,200,120,0.2); color: var(--ok); }
+    .tree-badge.replica { background: rgba(249,115,22,0.2); color: var(--info); }
+    .tree-badge.down { background: rgba(231,76,60,0.2); color: var(--err); }
+    .tree-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-left: auto; }
+    .tree-status.ok { background: var(--ok); }
+    .tree-status.err { background: var(--err); }
+    .tree-children { overflow: hidden; }
+    .tree-sep { height: 1px; background: var(--border-subtle); margin: 4px 0; }
+
+    /* === Content area === */
+    .content { padding: 0; }
+    .content-header { padding: 14px 20px; background: var(--bg-panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .breadcrumb span { color: var(--text-muted); }
+    .breadcrumb strong { color: var(--text-bright); font-weight: 600; }
+    .breadcrumb .sep { color: var(--text-faint); }
+
+    /* === Tabs === */
+    .tabs { display: flex; background: var(--bg-panel); border-bottom: 1px solid var(--border); padding: 0 20px; }
+    .tab { padding: 10px 18px; font-size: 13px; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+    .tab-content { padding: 20px; }
+
+    /* === Panels & Tables === */
+    .panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 16px; }
+    .panel-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; }
+    .panel-body { padding: 14px; }
+    .panel-grid { display: grid; gap: 16px; }
+    .panel-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+    .panel-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .panel-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px; background: var(--th-bg); border-bottom: 1px solid var(--border); }
+    td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+    tr:hover td { background: var(--row-hover); }
+    tr:last-child td { border-bottom: none; }
+
+    /* === Gauge (Proxmox-style circular) === */
+    .gauge-container { display: flex; flex-direction: column; align-items: center; padding: 10px; }
+    .gauge-svg { width: 100px; height: 100px; }
+    .gauge-label { margin-top: 8px; font-size: 12px; color: var(--text-muted); text-align: center; }
+    .gauge-value { font-size: 18px; font-weight: 700; color: var(--text-bright); }
+
+    /* === Key-value rows === */
+    .kv-table { width: 100%; }
+    .kv-table tr td:first-child { color: var(--text-muted); width: 140px; font-size: 12px; }
+    .kv-table tr td:last-child { color: var(--text-bright); }
+    .kv-table tr td { padding: 5px 12px; border-bottom: 1px solid var(--border-subtle); }
+
+    /* === Badges === */
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+    .badge.ok { background: rgba(80,200,120,0.15); color: var(--ok); }
+    .badge.warn { background: rgba(240,173,78,0.15); color: var(--warn); }
+    .badge.err { background: rgba(231,76,60,0.15); color: var(--err); }
+    .badge.info { background: rgba(249,115,22,0.15); color: var(--info); }
+    .badge.purple { background: rgba(155,89,182,0.15); color: var(--purple); }
+
+    /* === Buttons === */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 3px; border: 1px solid var(--border); background: var(--bg-btn); color: var(--text); font-size: 12px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+    .btn:hover { background: var(--bg-btn-hover); border-color: var(--border); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-hover); }
+    .btn.danger { background: rgba(231,76,60,0.15); border-color: var(--err); color: var(--err); }
+    .btn.danger:hover { background: rgba(231,76,60,0.25); }
+
+    /* === Progress bar === */
+    .progress { background: var(--gauge-track); border-radius: 2px; height: 6px; overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .progress-fill.ok { background: var(--ok); }
+    .progress-fill.warn { background: var(--warn); }
+    .progress-fill.err { background: var(--err); }
+
+    /* === Backup rows === */
+    .backup-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border-subtle); }
+    .backup-row:last-child { border-bottom: none; }
+    .backup-name { font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: var(--text-bright); }
+    .backup-time { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+    /* === Modal === */
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; padding: 20px; max-width: 440px; width: 90%; }
+    .modal h3 { font-size: 15px; color: var(--text-bright); margin-bottom: 10px; }
+    .modal p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* === Toast === */
+    .toast { position: fixed; bottom: 16px; right: 16px; padding: 10px 18px; border-radius: 4px; font-size: 12px; z-index: 200; animation: slideIn 0.3s; }
+    .toast.success { background: var(--toast-ok-bg); color: var(--toast-ok-text); border: 1px solid var(--toast-ok-border); }
+    .toast.error { background: var(--toast-err-bg); color: var(--toast-err-text); border: 1px solid var(--toast-err-border); }
+    @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .empty { color: var(--text-faint); font-style: italic; padding: 20px; text-align: center; }
+
+    /* === Form inputs === */
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 3px; color: var(--text-bright); font-size: 13px; font-family: inherit; }
+    .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .storage-status { display: flex; align-items: center; gap: 8px; }
+    .storage-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .storage-dot.mounted { background: var(--ok); box-shadow: 0 0 6px rgba(80,200,120,0.4); }
+    .storage-dot.unmounted { background: var(--err); box-shadow: 0 0 6px rgba(231,76,60,0.4); }
+    .storage-dot.none { background: var(--text-faint); }
+
+    /* === Task Viewer (Proxmox-style) === */
+    .task-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--overlay); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .task-viewer { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px; width: 700px; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 8px 32px var(--shadow); }
+    .task-viewer-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-topbar); border-radius: 6px 6px 0 0; }
+    .task-viewer-header h3 { font-size: 14px; color: var(--text-bright); font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .task-viewer-close { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 18px; padding: 2px 6px; border-radius: 3px; }
+    .task-viewer-close:hover { background: var(--bg-hover); color: var(--text-bright); }
+    .task-viewer-log { flex: 1; overflow-y: auto; padding: 12px 16px; font-family: 'SF Mono', Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 1.6; background: var(--bg-task-log); min-height: 250px; max-height: 55vh; }
+    .task-viewer-log .log-line { color: var(--text-muted); white-space: pre-wrap; word-break: break-all; }
+    .task-viewer-log .log-line.ok { color: var(--ok); font-weight: 600; }
+    .task-viewer-log .log-line.err { color: var(--err); font-weight: 600; }
+    .task-viewer-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+    .task-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* === Settings === */
+    .theme-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .theme-card { padding: 12px; border: 2px solid var(--border); border-radius: 6px; cursor: pointer; text-align: center; transition: all 0.15s; }
+    .theme-card:hover { border-color: var(--text-dim); }
+    .theme-card.active { border-color: var(--accent); }
+    .theme-card-preview { height: 40px; border-radius: 3px; margin-bottom: 8px; display: flex; overflow: hidden; }
+    .theme-card-preview > div { flex: 1; }
+    .theme-card-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .sidebar-resize { display: none; }
+      .panel-grid.cols-3, .panel-grid.cols-4 { grid-template-columns: 1fr 1fr; }
+      .theme-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <script>try{document.documentElement.setAttribute('data-theme',localStorage.getItem('theme')||'dark')}catch(e){}</script>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+    function GithubStars() {
+      const [stars, setStars] = useState(null);
+      useEffect(() => {
+        fetch('https://api.github.com/repos/iadityaharsh/postgresql-cluster')
+          .then(r => r.json())
+          .then(d => { if (d.stargazers_count !== undefined) setStars(d.stargazers_count); })
+          .catch(() => {});
+      }, []);
+      if (stars === null) return null;
+      return (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--warn)', fontSize: 11, marginLeft: 2 }}>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg>
+          {stars}
+        </span>
+      );
+    }
+
+    function VersionBadge() {
+      const [ver, setVer] = useState({ current: null, latest: null, update_available: false, checking: false, nodes: [], all_nodes_match: true });
+      const [taskViewer, setTaskViewer] = useState(null);
+      const [showNodes, setShowNodes] = useState(false);
+
+      useEffect(() => {
+        fetch('/api/version').then(r => r.json()).then(d => setVer(v => ({ ...v, current: d.version }))).catch(() => {});
+      }, []);
+
+      const checkForUpdates = async () => {
+        setVer(v => ({ ...v, checking: true, error: null }));
+        try {
+          const data = await fetch('/api/version/check').then(r => r.json());
+          setVer({ current: data.current, latest: data.latest, update_available: data.update_available, checking: false, nodes: data.nodes || [], all_nodes_match: data.all_nodes_match !== false, error: data.error || null });
+        } catch (e) { setVer(v => ({ ...v, checking: false, error: e.message })); }
+      };
+
+      const startUpgrade = async () => {
+        try {
+          const resp = await fetch('/api/version/upgrade', { method: 'POST' });
+          if (resp.ok) {
+            setTaskViewer({ title: `Upgrading cluster to ${ver.latest}`, statusUrl: '/api/version/upgrade/status' });
+          }
+        } catch {}
+      };
+
+      const statusText = () => {
+        if (ver.checking) return 'Checking...';
+        if (ver.error) return 'Check failed — retry';
+        if (ver.latest && !ver.update_available) {
+          if (ver.all_nodes_match) return `Up to date (v${ver.latest})`;
+          return 'Nodes out of sync';
+        }
+        return 'Check for updates';
+      };
+
+      const statusColor = () => {
+        if (!ver.latest || ver.update_available) return undefined;
+        return ver.all_nodes_match ? 'var(--ok)' : 'var(--warn)';
+      };
+
+      return (
+        <>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {ver.current && <span style={{ fontSize: 11, color: 'var(--text-dim)', fontWeight: 400 }}>v{ver.current}</span>}
+            {ver.update_available ? (
+              <button className="btn" onClick={startUpgrade}
+                style={{ padding: '3px 10px', fontSize: 11, background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff', animation: 'none' }}>
+                Upgrade to v{ver.latest}
+              </button>
+            ) : (
+              <button className="btn" onClick={checkForUpdates} disabled={ver.checking}
+                onMouseEnter={() => ver.nodes.length > 0 && setShowNodes(true)}
+                onMouseLeave={() => setShowNodes(false)}
+                style={{ padding: '3px 10px', fontSize: 11, borderColor: statusColor() || undefined, color: statusColor() || undefined }}>
+                {statusText()}
+              </button>
+            )}
+            {showNodes && ver.nodes.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 4, padding: 8, zIndex: 100, minWidth: 200, fontSize: 11, boxShadow: '0 4px 12px var(--shadow)' }}>
+                {ver.nodes.map(n => (
+                  <div key={n.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', gap: 12 }}>
+                    <span style={{ color: 'var(--text-bright)' }}>{n.name}</span>
+                    <span style={{ color: n.version === ver.current ? 'var(--ok)' : 'var(--warn)', fontFamily: 'monospace' }}>v{n.version}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {taskViewer && (
+            <TaskViewer title={taskViewer.title} statusUrl={taskViewer.statusUrl} autoReload
+              onClose={() => { setTaskViewer(null); window.location.reload(); }} />
+          )}
+        </>
+      );
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function formatUptime(seconds) {
+      if (!seconds) return '-';
+      const d = Math.floor(seconds / 86400), h = Math.floor((seconds % 86400) / 3600), m = Math.floor((seconds % 3600) / 60);
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m`;
+    }
+
+    function formatDate(d) {
+      if (!d) return '-';
+      return new Date(d).toLocaleString();
+    }
+
+    function Gauge({ percent, label, detail, size = 90 }) {
+      const p = Math.min(100, Math.max(0, parseFloat(percent) || 0));
+      const r = (size - 10) / 2;
+      const circ = 2 * Math.PI * r;
+      const offset = circ - (p / 100) * circ;
+      const color = p > 80 ? '#e74c3c' : p > 60 ? '#f0ad4e' : '#50c878';
+      return (
+        <div className="gauge-container">
+          <svg className="gauge-svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#2d2d44" strokeWidth="6" />
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="6"
+              strokeDasharray={circ} strokeDashoffset={offset}
+              strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`}
+              style={{ transition: 'stroke-dashoffset 0.5s' }} />
+            <text x={size/2} y={size/2 - 2} textAnchor="middle" fill="#e8e8f0" fontSize="16" fontWeight="700">{p.toFixed(0)}%</text>
+            <text x={size/2} y={size/2 + 14} textAnchor="middle" fill="#7878a0" fontSize="9">{detail || ''}</text>
+          </svg>
+          <div className="gauge-label">{label}</div>
+        </div>
+      );
+    }
+
+    function Badge({ type, text }) {
+      return <span className={`badge ${type}`}>{text}</span>;
+    }
+
+    function Toast({ message, type, onClose }) {
+      useEffect(() => { const t = setTimeout(onClose, 4000); return () => clearTimeout(t); }, [onClose]);
+      return <div className={`toast ${type}`}>{message}</div>;
+    }
+
+    function ConfirmModal({ title, message, confirmText, confirmClass, onConfirm, onCancel }) {
+      return (
+        <div className="modal-overlay" onClick={onCancel}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h3>{title}</h3>
+            <p>{message}</p>
+            <div className="modal-actions">
+              <button className="btn" onClick={onCancel}>Cancel</button>
+              <button className={`btn ${confirmClass || 'primary'}`} onClick={onConfirm}>{confirmText}</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Tab: Summary ==========
+    function SummaryTab({ cluster, connections, replication, system, databases }) {
+      const nodes = cluster?.nodes || [];
+      const nodesUp = nodes.filter(n => n.patroni?.state === 'running').length;
+      const leader = nodes.find(n => n.patroni?.role === 'master' || n.patroni?.role === 'primary');
+      const replicas = nodes.filter(n => n.patroni?.state === 'running' && n.name !== leader?.name);
+      const [switching, setSwitching] = React.useState(false);
+      const [switchTarget, setSwitchTarget] = React.useState('');
+      const [toast, setToast] = React.useState(null);
+      const connTotal = connections?.by_state?.reduce((s, c) => s + parseInt(c.count), 0) || 0;
+      const connMax = connections?.max_connections || 0;
+      const connPct = connMax ? ((connTotal / connMax) * 100) : 0;
+
+      const handleSwitchover = async () => {
+        if (switching || !switchTarget) return;
+        setSwitching(true);
+        try {
+          const r = await fetch('/api/cluster/switchover', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target: switchTarget })
+          });
+          const data = await r.json();
+          if (r.ok) {
+            setToast({ message: data.message, type: 'success' });
+            setSwitchTarget('');
+          } else {
+            setToast({ message: data.error || 'Switchover failed', type: 'error' });
+          }
+        } catch (err) {
+          setToast({ message: err.message, type: 'error' });
+        }
+        setSwitching(false);
+      };
+
+      return (
+        <div>
+          <div className="panel">
+            <div className="panel-header">Status</div>
+            <div className="panel-body">
+              <div className="panel-grid cols-4">
+                <Gauge percent={(nodesUp / (nodes.length || 1)) * 100} label="Nodes Online" detail={`${nodesUp} / ${nodes.length}`} />
+                <Gauge percent={connPct} label="Connections" detail={`${connTotal} / ${connMax}`} />
+                <Gauge percent={replicas.length > 0 ? 100 : 0} label="Replication" detail={`${replicas.length} streaming`} />
+                <div className="gauge-container">
+                  <div style={{ textAlign: 'center', padding: '10px 0' }}>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: leader ? '#50c878' : '#e74c3c' }}>{leader ? leader.name : 'NONE'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>{leader?.ip || 'no leader'}</div>
+                    {leader && replicas.length > 0 && (
+                      <div style={{ marginTop: 8, display: 'flex', gap: 4, justifyContent: 'center', alignItems: 'center' }}>
+                        <select value={switchTarget} onChange={e => setSwitchTarget(e.target.value)}
+                          style={{ fontSize: 11, padding: '3px 6px', background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4 }}>
+                          <option value="">Switch to...</option>
+                          {replicas.map(n => <option key={n.name} value={n.name}>{n.name}</option>)}
+                        </select>
+                        <button onClick={handleSwitchover} disabled={switching || !switchTarget}
+                          style={{ padding: '3px 10px', fontSize: 11, background: switchTarget ? 'var(--accent)' : 'var(--border)', color: '#fff', border: 'none', borderRadius: 4, cursor: switching || !switchTarget ? 'default' : 'pointer', opacity: switching ? 0.6 : 1 }}>
+                          {switching ? 'Switching...' : 'Switch'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="gauge-label">Current Leader</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="panel-grid cols-2">
+            <div className="panel">
+              <div className="panel-header">Cluster Info</div>
+              <div className="panel-body" style={{ padding: 0 }}>
+                <table className="kv-table">
+                  <tbody>
+                    <tr><td>Cluster Name</td><td>{cluster?.cluster_name || '-'}</td></tr>
+                    <tr><td>Virtual IP</td><td style={{ fontFamily: 'monospace' }}>{cluster?.vip ? `${cluster.vip}:${cluster.pg_port}` : 'Disabled'}</td></tr>
+                    <tr><td>Total Nodes</td><td>{nodes.length}</td></tr>
+                    <tr><td>Databases</td><td>{databases?.length || 0}</td></tr>
+                    <tr><td>Max Connections</td><td>{connMax}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">Databases</div>
+              <div className="panel-body" style={{ padding: 0 }}>
+                <table>
+                  <thead><tr><th>Name</th><th>Size</th><th>Connections</th></tr></thead>
+                  <tbody>
+                    {(databases || []).map((db, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 500 }}>{db.datname}</td>
+                        <td>{formatBytes(parseInt(db.size_bytes))}</td>
+                        <td>{db.connections}</td>
+                      </tr>
+                    ))}
+                    {(!databases || databases.length === 0) && <tr><td colSpan="3" className="empty">No databases</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {system && system.length > 0 && (
+            <div className="panel" style={{ marginTop: 16 }}>
+              <div className="panel-header">System Resources</div>
+              <div className="panel-body">
+                <div className="panel-grid cols-3">
+                  {system.map((s, i) => (
+                    <div key={i} style={{ background: 'var(--bg-input)', borderRadius: 4, padding: 12, border: '1px solid var(--border-subtle)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <span style={{ color: s.error ? '#e74c3c' : '#50c878', fontSize: 10 }}>&#9679;</span>
+                        <span style={{ fontWeight: 600, color: 'var(--text-bright)' }}>{s.hostname || s.name}</span>
+                      </div>
+                      {s.error ? <div style={{ color: 'var(--err)', fontSize: 12 }}>Unreachable</div> : (
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+                            <span>Memory</span><span>{s.memory?.used_percent}%</span>
+                          </div>
+                          <div className="progress">
+                            <div className={`progress-fill ${parseFloat(s.memory?.used_percent) > 80 ? 'err' : parseFloat(s.memory?.used_percent) > 60 ? 'warn' : 'ok'}`}
+                                 style={{ width: `${s.memory?.used_percent}%` }} />
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 3 }}>
+                            {formatBytes(s.memory?.total_bytes - s.memory?.free_bytes)} / {formatBytes(s.memory?.total_bytes)}
+                          </div>
+                          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                            <span>CPU: {s.cpu_count} cores</span>
+                            <span style={{ color: 'var(--text-dim)' }}>Load: {s.load_avg?.['1m']?.toFixed(2) ?? 'N/A'}</span>
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-dim)' }}>Uptime: {formatUptime(s.uptime_seconds)}</div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        </div>
+      );
+    }
+
+    // ========== Tab: Nodes ==========
+    function NodesTab({ cluster, replication }) {
+      const nodes = cluster?.nodes || [];
+      return (
+        <div>
+          <div className="panel">
+            <div className="panel-header">Cluster Members</div>
+            <div className="panel-body" style={{ padding: 0 }}>
+              <table>
+                <thead>
+                  <tr><th>Node</th><th>IP Address</th><th>Role</th><th>State</th><th>PostgreSQL</th><th>Timeline</th><th>Replication</th></tr>
+                </thead>
+                <tbody>
+                  {nodes.map((node, i) => {
+                    const p = node.patroni || {};
+                    const role = p.role || 'unknown';
+                    const state = p.state || 'unknown';
+                    const isLeader = role === 'master' || role === 'primary';
+                    const isRunning = state === 'running';
+                    return (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 600 }}>{node.name}</td>
+                        <td style={{ fontFamily: 'Consolas, monospace', fontSize: 12 }}>{node.ip}</td>
+                        <td><Badge type={isLeader ? 'ok' : 'info'} text={isLeader ? 'Leader' : 'Replica'} /></td>
+                        <td><Badge type={isRunning ? 'ok' : 'err'} text={state} /></td>
+                        <td>{p.server_version || '-'}</td>
+                        <td>{p.timeline || '-'}</td>
+                        <td>{p.replication_state || (isLeader ? '-' : 'streaming')}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">Replication Status</div>
+            <div className="panel-body" style={{ padding: 0 }}>
+              <table>
+                <thead><tr><th>Client Address</th><th>State</th><th>Sent LSN</th><th>Replay LSN</th><th>Lag</th></tr></thead>
+                <tbody>
+                  {(replication || []).map((r, i) => (
+                    <tr key={i}>
+                      <td style={{ fontFamily: 'Consolas, monospace', fontSize: 12 }}>{r.client_addr}</td>
+                      <td><Badge type={r.state === 'streaming' ? 'ok' : 'warn'} text={r.state} /></td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.sent_lsn || '-'}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{r.replay_lsn || '-'}</td>
+                      <td>{formatBytes(parseInt(r.lag_bytes || 0))}</td>
+                    </tr>
+                  ))}
+                  {(!replication || replication.length === 0) && <tr><td colSpan="5" className="empty">No replication data (this node may be a replica)</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Tab: Connections ==========
+    function ConnectionsTab({ connections }) {
+      if (!connections || !connections.by_state) return <div className="empty">No connection data</div>;
+      const total = connections.by_state.reduce((s, c) => s + parseInt(c.count), 0);
+      const max = connections.max_connections;
+      const pct = max ? ((total / max) * 100) : 0;
+      return (
+        <div>
+          <div className="panel-grid cols-2">
+            <div className="panel">
+              <div className="panel-header">Usage</div>
+              <div className="panel-body" style={{ display: 'flex', justifyContent: 'center' }}>
+                <Gauge percent={pct} label="Connection Usage" detail={`${total} / ${max}`} size={120} />
+              </div>
+            </div>
+            <div className="panel">
+              <div className="panel-header">By State</div>
+              <div className="panel-body" style={{ padding: 0 }}>
+                <table>
+                  <thead><tr><th>State</th><th>Count</th><th>Percentage</th></tr></thead>
+                  <tbody>
+                    {connections.by_state.map((s, i) => {
+                      const cnt = parseInt(s.count);
+                      const p = total ? ((cnt / total) * 100).toFixed(1) : 0;
+                      return (
+                        <tr key={i}>
+                          <td>{s.state || 'null'}</td>
+                          <td style={{ fontWeight: 600 }}>{cnt}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div className="progress" style={{ flex: 1 }}>
+                                <div className="progress-fill ok" style={{ width: `${p}%` }} />
+                              </div>
+                              <span style={{ fontSize: 11, color: 'var(--text-dim)', width: 36 }}>{p}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Tab: Backups ==========
+    function TaskViewer({ title, statusUrl, onClose, autoReload }) {
+      const [log, setLog] = useState([]);
+      const [running, setRunning] = useState(true);
+      const [exitCode, setExitCode] = useState(null);
+      const logRef = React.useRef(null);
+      const lineCount = React.useRef(0);
+      const sawSuccess = React.useRef(false);
+
+      useEffect(() => {
+        let active = true;
+        const poll = async () => {
+          if (!active) return;
+          try {
+            const resp = await fetch(`${statusUrl}?since=${lineCount.current}`);
+            const data = await resp.json();
+            if (data.log && data.log.length > 0) {
+              setLog(prev => [...prev, ...data.log]);
+              lineCount.current = data.totalLines;
+            }
+            if (data.exitCode === 0) sawSuccess.current = true;
+            setRunning(data.running);
+            setExitCode(data.exitCode);
+            if (data.running) setTimeout(poll, 500);
+            else if (autoReload && data.exitCode === 0) {
+              setTimeout(() => window.location.reload(), 2000);
+            }
+          } catch {
+            // Server went away — if we already saw success, it's the restart
+            if (sawSuccess.current && autoReload) {
+              setTimeout(() => window.location.reload(), 3000);
+              return;
+            }
+            if (active) setTimeout(poll, 1000);
+          }
+        };
+        poll();
+        return () => { active = false; };
+      }, [statusUrl]);
+
+      useEffect(() => {
+        if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+      }, [log]);
+
+      const done = !running && exitCode !== null;
+      const success = exitCode === 0;
+
+      return (
+        <div className="task-overlay" onClick={done ? onClose : undefined}>
+          <div className="task-viewer" onClick={e => e.stopPropagation()}>
+            <div className="task-viewer-header">
+              <h3>
+                {running && <span className="task-spinner" />}
+                {!running && success && <span style={{ color: 'var(--ok)', fontSize: 16 }}>&#10003;</span>}
+                {!running && !success && exitCode !== null && <span style={{ color: 'var(--err)', fontSize: 16 }}>&#10007;</span>}
+                {title}
+              </h3>
+              <button className="task-viewer-close" onClick={onClose}>&times;</button>
+            </div>
+            <div className="task-viewer-log" ref={logRef}>
+              {log.map((line, i) => {
+                const isOk = line.includes('TASK OK');
+                const isErr = line.includes('TASK ERROR') || line.includes('ERROR:');
+                return <div key={i} className={`log-line ${isOk ? 'ok' : isErr ? 'err' : ''}`}>{line}</div>;
+              })}
+              {running && log.length === 0 && <div className="log-line">Waiting for output...</div>}
+            </div>
+            <div className="task-viewer-footer">
+              <span style={{ color: running ? '#f0ad4e' : success ? '#50c878' : '#e74c3c' }}>
+                {running ? 'Running...' : success ? 'Task completed successfully' : `Task failed (exit code ${exitCode})`}
+              </span>
+              <button className="btn" onClick={onClose}>{done ? 'Close' : 'Background'}</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Settings Tab ==========
+    const THEMES = [
+      { id: 'dark', name: 'Dark', colors: ['#1a1a2e', '#1e1e32', '#2d2d44', '#f97316'] },
+      { id: 'light', name: 'Light', colors: ['#f0f0f5', '#ffffff', '#e8e8f0', '#ea580c'] },
+      { id: 'nord-dark', name: 'Nord Dark', colors: ['#2e3440', '#3b4252', '#434c5e', '#d08770'] },
+      { id: 'nord-light', name: 'Nord Light', colors: ['#eceff4', '#ffffff', '#e5e9f0', '#c06840'] },
+    ];
+
+    function SettingsTab() {
+      const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+      const [toast, setToast] = useState(null);
+      const [tunnel, setTunnel] = useState(null);
+      const [tunnelToken, setTunnelToken] = useState('');
+      const [taskViewer, setTaskViewer] = useState(null);
+
+      const applyTheme = (id) => {
+        document.documentElement.setAttribute('data-theme', id);
+        localStorage.setItem('theme', id);
+        setTheme(id);
+      };
+
+      const exportConfig = () => {
+        window.open('/api/config/export', '_blank');
+      };
+
+      const exportPatroniConfig = async () => {
+        try {
+          const data = await fetch('/api/config/patroni').then(r => r.json());
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `patroni-config-${new Date().toISOString().slice(0,10)}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } catch { setToast({ message: 'Failed to export Patroni config', type: 'error' }); }
+      };
+
+      const fetchTunnel = useCallback(async () => {
+        try {
+          const data = await fetch('/api/tunnel').then(r => r.json());
+          setTunnel(data);
+        } catch {}
+      }, []);
+
+      useEffect(() => { fetchTunnel(); }, [fetchTunnel]);
+
+      const setupTunnel = async () => {
+        if (!tunnelToken.trim() || tunnelToken.trim().length < 20) return setToast({ message: 'Enter a valid tunnel token', type: 'error' });
+        try {
+          const resp = await fetch('/api/tunnel/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: tunnelToken.trim() })
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            setTaskViewer({ title: 'Cloudflare Tunnel Setup — All Nodes', statusUrl: '/api/tunnel/status' });
+          } else {
+            setToast({ message: data.error, type: 'error' });
+          }
+        } catch { setToast({ message: 'Failed to start tunnel setup', type: 'error' }); }
+      };
+
+      const closeTasks = () => { setTaskViewer(null); fetchTunnel(); };
+
+      const tunnelActive = tunnel?.running;
+
+      return (
+        <div>
+          {/* Remote Access */}
+          <div className="panel">
+            <div className="panel-header">
+              <span>Remote Access</span>
+              <a href="https://github.com/iadityaharsh/postgresql-cluster/blob/main/docs/remote-access.md" target="_blank" rel="noopener noreferrer"
+                 className="btn" style={{ padding: '3px 10px', fontSize: 11, textDecoration: 'none' }}>
+                View Docs
+              </a>
+            </div>
+            <div className="panel-body">
+              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Expose your PostgreSQL cluster securely using Cloudflare Tunnel.
+                All cluster nodes are configured as tunnel connectors for HA.
+              </div>
+
+              {/* Status */}
+              {tunnel && (
+                <div style={{ marginBottom: 16 }}>
+                  <table className="kv-table">
+                    <tbody>
+                      <tr>
+                        <td>cloudflared</td>
+                        <td>{tunnel.installed ? <><Badge type="ok" text="Installed" /> <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>v{tunnel.version}</span></> : <Badge type="err" text="Not Installed" />}</td>
+                      </tr>
+                      <tr>
+                        <td>Tunnel Service</td>
+                        <td>{tunnelActive ? <Badge type="ok" text="Running" /> : tunnel.installed ? <Badge type="warn" text="Stopped" /> : <Badge type="err" text="N/A" />}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Setup form */}
+              <div style={{ marginBottom: 12 }}>
+                <div className="form-group" style={{ marginBottom: 8 }}>
+                  <label>Tunnel Token</label>
+                  <input type="password" placeholder="Paste tunnel token from Cloudflare Zero Trust dashboard" value={tunnelToken} onChange={e => setTunnelToken(e.target.value)} />
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
+                  Create a tunnel at <strong>Cloudflare Zero Trust &gt; Networks &gt; Tunnels</strong>, then copy the token.
+                  Configure public hostname and service (tcp://VIP:5432) in the Cloudflare dashboard.
+                </p>
+                <button className="btn primary" onClick={setupTunnel}>
+                  {tunnelActive ? 'Reconfigure All Nodes' : 'Setup All Nodes'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Theme */}
+          <div className="panel">
+            <div className="panel-header"><span>Appearance</span></div>
+            <div className="panel-body">
+              <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--text-muted)' }}>Select a theme for the dashboard. Your preference is saved in the browser.</div>
+              <div className="theme-grid">
+                {THEMES.map(t => (
+                  <div key={t.id} className={`theme-card ${theme === t.id ? 'active' : ''}`} onClick={() => applyTheme(t.id)}>
+                    <div className="theme-card-preview">
+                      {t.colors.map((c, i) => <div key={i} style={{ background: c }} />)}
+                    </div>
+                    <div className="theme-card-label">{t.name}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Config Backup */}
+          <div className="panel">
+            <div className="panel-header"><span>Configuration Backup</span></div>
+            <div className="panel-body">
+              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
+                Download a copy of the cluster configuration. Sensitive fields (passwords) are redacted in the export.
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="btn primary" onClick={exportConfig}>
+                  Export cluster.conf
+                </button>
+                <button className="btn" onClick={exportPatroniConfig}>
+                  Export Patroni Config
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {taskViewer && <TaskViewer title={taskViewer.title} statusUrl={taskViewer.statusUrl} onClose={closeTasks} />}
+          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        </div>
+      );
+    }
+
+    // ========== Backups Tab ==========
+    function BackupsTab() {
+      const [backups, setBackups] = useState({ available: false, archives: [] });
+      const [storage, setStorage] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [backupRunning, setBackupRunning] = useState(false);
+      const [toast, setToast] = useState(null);
+      const [confirmRestore, setConfirmRestore] = useState(null);
+      const [confirmDelete, setConfirmDelete] = useState(null);
+      const [taskViewer, setTaskViewer] = useState(null);
+      const [storageForm, setStorageForm] = useState({ type: 'nfs', nfs_server: '', nfs_path: '', smb_share: '', smb_user: '', smb_pass: '', smb_domain: 'WORKGROUP', schedule: '0 2 * * *', retention: '7' });
+      const [nfsExports, setNfsExports] = useState([]);
+      const [nfsExportsLoading, setNfsExportsLoading] = useState(false);
+      const nfsScannedRef = React.useRef('');
+
+      const scanNfsExports = useCallback(async (server) => {
+        if (!server || !/^\d+\.\d+\.\d+\.\d+$/.test(server)) return;
+        if (server === nfsScannedRef.current) return;
+        nfsScannedRef.current = server;
+        setNfsExportsLoading(true);
+        try {
+          const data = await fetch(`/api/storage/nfs-exports?server=${server}`).then(r => r.json());
+          setNfsExports(data.exports || []);
+        } catch { setNfsExports([]); }
+        setNfsExportsLoading(false);
+      }, []);
+
+      const fetchBackups = useCallback(async () => {
+        try {
+          const [list, status] = await Promise.all([
+            fetch('/api/backups').then(r => r.json()),
+            fetch('/api/backups/status').then(r => r.json())
+          ]);
+          setBackups(list);
+          setBackupRunning(status.running);
+        } catch {}
+        setLoading(false);
+      }, []);
+
+      const fetchStorage = useCallback(async () => {
+        try {
+          const data = await fetch('/api/storage').then(r => r.json());
+          setStorage(data);
+          if (data.nfs_server || data.nfs_path || data.smb_share) {
+            setStorageForm({ type: data.type || 'nfs', nfs_server: data.nfs_server || '', nfs_path: data.nfs_path || '', smb_share: data.smb_share || '', smb_user: data.smb_user || '', smb_pass: '', smb_domain: data.smb_domain || 'WORKGROUP', schedule: data.schedule || '0 2 * * *', retention: data.retention || '7' });
+          }
+        } catch {
+          setStorage({ enabled: false, type: 'none', nfs_server: '', nfs_path: '', smb_share: '', mounted: false });
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchBackups();
+        fetchStorage();
+        const interval = setInterval(() => { fetchBackups(); fetchStorage(); }, 5000);
+        return () => clearInterval(interval);
+      }, [fetchBackups, fetchStorage]);
+
+      const createBackup = async () => {
+        try {
+          const resp = await fetch('/api/backups', { method: 'POST' });
+          const data = await resp.json();
+          if (resp.ok) {
+            setBackupRunning(true);
+            setTaskViewer({ title: 'Backup — pg_dumpall + Borg', statusUrl: '/api/backups/status' });
+          } else {
+            setToast({ message: data.error, type: 'error' });
+          }
+        } catch { setToast({ message: 'Failed to start backup', type: 'error' }); }
+      };
+
+      const restoreBackup = async (archive) => {
+        setConfirmRestore(null);
+        try {
+          const resp = await fetch('/api/backups/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ archive })
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            setTaskViewer({ title: `Restore — ${archive}`, statusUrl: '/api/backups/restore/status' });
+          } else {
+            setToast({ message: data.error, type: 'error' });
+          }
+        } catch { setToast({ message: 'Failed to start restore', type: 'error' }); }
+      };
+
+      const deleteArchive = async (name) => {
+        setConfirmDelete(null);
+        try {
+          const resp = await fetch(`/api/backups/${encodeURIComponent(name)}`, { method: 'DELETE' });
+          const data = await resp.json();
+          if (resp.ok) { setToast({ message: data.message, type: 'success' }); fetchBackups(); }
+          else { setToast({ message: data.error, type: 'error' }); }
+        } catch { setToast({ message: 'Failed to delete archive', type: 'error' }); }
+      };
+
+      const configureStorage = async () => {
+        try {
+          const resp = await fetch('/api/storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(storageForm)
+          });
+          const data = await resp.json();
+          if (resp.ok) {
+            if (storageForm.type !== 'none') {
+              setTaskViewer({ title: 'Borg Setup — ' + (storageForm.type === 'nfs' ? 'NFS' : 'SMB'), statusUrl: '/api/storage/status' });
+            } else {
+              setToast({ message: 'Backups disabled', type: 'success' });
+              fetchStorage();
+            }
+          } else {
+            setToast({ message: data.error, type: 'error' });
+          }
+        } catch { setToast({ message: 'Failed to configure storage', type: 'error' }); }
+      };
+
+      const closeTaskViewer = () => {
+        setTaskViewer(null);
+        fetchBackups();
+        fetchStorage();
+      };
+
+      const storageConfigured = storage && storage.enabled && storage.type !== 'none';
+      const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+      const resetStorage = async () => {
+        setShowResetConfirm(false);
+        try {
+          const resp = await fetch('/api/storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'none' })
+          });
+          if (resp.ok) {
+            setStorageForm({ type: 'nfs', nfs_server: '', nfs_path: '', smb_share: '', smb_user: '', smb_pass: '', smb_domain: 'WORKGROUP', schedule: '0 2 * * *', retention: '7' });
+            setToast({ message: 'Backup location reset', type: 'success' });
+            fetchStorage();
+          }
+        } catch { setToast({ message: 'Failed to reset', type: 'error' }); }
+      };
+
+      return (
+        <div>
+          {/* Borg Configuration — Nextcloud AIO style state machine */}
+          <div className="panel">
+            <div className="panel-header">
+              <span>Borg Configuration</span>
+              {storageConfigured && (
+                <button className="btn danger" style={{ fontSize: 11, padding: '3px 10px' }} onClick={() => setShowResetConfirm(true)}>Reset Backup Location</button>
+              )}
+            </div>
+            <div className="panel-body">
+              {!storage ? <div className="empty">Loading...</div> :
+               !storageConfigured ? (
+                /* ---- State: Not Configured — show inline setup form ---- */
+                <div style={{ maxWidth: 480 }}>
+                  <p style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 13 }}>Configure where Borg backups are stored. Settings apply to all cluster nodes.</p>
+                  <div className="form-group">
+                    <label>Storage Type</label>
+                    <select value={storageForm.type} onChange={e => setStorageForm({ ...storageForm, type: e.target.value })}>
+                      <option value="nfs">NFS Share</option>
+                      <option value="smb">SMB/CIFS Share</option>
+                    </select>
+                  </div>
+                  {storageForm.type === 'nfs' && (
+                    <div className="form-row">
+                      <div className="form-group">
+                        <label>Server</label>
+                        <input type="text" placeholder="e.g. 10.0.0.50" value={storageForm.nfs_server}
+                          onChange={e => {
+                            setStorageForm({ ...storageForm, nfs_server: e.target.value, nfs_path: '' });
+                            setNfsExports([]);
+                            nfsScannedRef.current = '';
+                          }}
+                          onBlur={e => scanNfsExports(e.target.value)} />
+                      </div>
+                      <div className="form-group">
+                        <label>Export Path</label>
+                        {nfsExports.length > 0 ? (
+                          <select value={storageForm.nfs_path} onChange={e => setStorageForm({ ...storageForm, nfs_path: e.target.value })}>
+                            <option value="">Select export...</option>
+                            {nfsExports.map(exp => (
+                              <option key={exp.path} value={exp.path}>{exp.path}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input type="text" value={storageForm.nfs_path}
+                            placeholder={nfsExportsLoading ? 'Scanning...' : '/export/path'}
+                            onChange={e => setStorageForm({ ...storageForm, nfs_path: e.target.value })} />
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {storageForm.type === 'smb' && (
+                    <>
+                      <div className="form-group">
+                        <label>SMB Share</label>
+                        <input type="text" placeholder="e.g. //10.0.0.50/backups" value={storageForm.smb_share} onChange={e => setStorageForm({ ...storageForm, smb_share: e.target.value })} />
+                      </div>
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>Username</label>
+                          <input type="text" placeholder="e.g. backupuser" value={storageForm.smb_user} onChange={e => setStorageForm({ ...storageForm, smb_user: e.target.value })} />
+                        </div>
+                        <div className="form-group">
+                          <label>Password</label>
+                          <input type="password" placeholder="••••••••" value={storageForm.smb_pass} onChange={e => setStorageForm({ ...storageForm, smb_pass: e.target.value })} />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Domain</label>
+                        <input type="text" placeholder="WORKGROUP" value={storageForm.smb_domain} onChange={e => setStorageForm({ ...storageForm, smb_domain: e.target.value })} />
+                      </div>
+                    </>
+                  )}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Backup Schedule (cron)</label>
+                      <input type="text" placeholder="0 2 * * *" value={storageForm.schedule} onChange={e => setStorageForm({ ...storageForm, schedule: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label>Retention (days)</label>
+                      <input type="number" min="1" value={storageForm.retention} onChange={e => setStorageForm({ ...storageForm, retention: e.target.value })} />
+                    </div>
+                  </div>
+                  <button className="btn primary" onClick={configureStorage} style={{ marginTop: 8 }}>Submit Backup Location</button>
+                </div>
+              ) : (
+                /* ---- State: Configured — show status summary ---- */
+                <table className="kv-table">
+                  <tbody>
+                    <tr>
+                      <td>Status</td>
+                      <td>
+                        <div className="storage-status">
+                          <span className={`storage-dot ${storage.mounted ? 'mounted' : 'unmounted'}`}></span>
+                          {storage.mounted ? 'Mounted' : 'Not Mounted'}
+                          {!storage.mounted && storage.type === 'smb' && (
+                            <button className="btn" onClick={async () => {
+                              try {
+                                const r = await fetch('/api/storage/mount', { method: 'POST' });
+                                const d = await r.json();
+                                if (r.ok) { setToast({ message: d.message || 'Mount successful', type: 'success' }); fetchStorage(); }
+                                else { setToast({ message: d.error || 'Mount failed', type: 'error' }); }
+                              } catch { setToast({ message: 'Mount request failed', type: 'error' }); }
+                            }} style={{ marginLeft: 8, padding: '2px 8px', fontSize: 10 }}>
+                              Mount
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    <tr><td>Type</td><td>{storage.type === 'nfs' ? 'NFS Share' : 'SMB/CIFS Share'}</td></tr>
+                    {storage.type === 'smb' ? (
+                      <>
+                        <tr><td>Share</td><td>{storage.smb_share}</td></tr>
+                        <tr><td>User</td><td>{storage.smb_user || '—'}</td></tr>
+                      </>
+                    ) : (
+                      <tr><td>Location</td><td>{storage.nfs_server}:{storage.nfs_path}</td></tr>
+                    )}
+                    <tr><td>Repository</td><td>/mnt/pg-backup/borg-repo</td></tr>
+                    <tr><td>Schedule</td><td>{storage.schedule}</td></tr>
+                    <tr><td>Retention</td><td>{storage.retention} days</td></tr>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          {/* Backup Archives — only shown when configured */}
+          {storageConfigured && (
+            <div className="panel">
+              <div className="panel-header">
+                <span>Backup Archives</span>
+                <button className="btn primary" onClick={createBackup} disabled={backupRunning || !storage.mounted}>
+                  {backupRunning ? 'Running...' : 'Create Backup'}
+                </button>
+              </div>
+              <div className="panel-body" style={{ padding: 0 }}>
+                {loading ? <div className="empty">Loading...</div> :
+                 !storage.mounted ? <div className="empty">Waiting for storage to be mounted...</div> :
+                 !backups.available ? <div className="empty">{backups.error || 'Initializing Borg repository...'}</div> :
+                 backups.archives.length === 0 ? <div className="empty">No backups yet. Click "Create Backup" to create the first one.</div> : (
+                  <table>
+                    <thead><tr><th>Archive Name</th><th>Created</th><th>Actions</th></tr></thead>
+                    <tbody>
+                      {backups.archives.map((a, i) => (
+                        <tr key={i}>
+                          <td><span className="backup-name">{a.name}</span></td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatDate(a.start)}</td>
+                          <td style={{ display: 'flex', gap: 4 }}>
+                            <button className="btn danger" onClick={() => setConfirmRestore(a.name)}>Restore</button>
+                            <button className="btn" onClick={() => setConfirmDelete(a.name)} style={{ fontSize: 11 }}>Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
+          {confirmDelete && (
+            <ConfirmModal
+              title="Delete Archive"
+              message={`Permanently delete "${confirmDelete}" from the Borg repository? This cannot be undone.`}
+              confirmText="Delete"
+              confirmClass="danger"
+              onConfirm={() => deleteArchive(confirmDelete)}
+              onCancel={() => setConfirmDelete(null)}
+            />
+          )}
+
+          {showResetConfirm && (
+            <ConfirmModal
+              title="Reset Backup Location"
+              message="This will disable backups and clear the storage configuration on all nodes. Existing backup archives on the remote storage will NOT be deleted. Are you sure?"
+              confirmText="Reset"
+              confirmClass="danger"
+              onConfirm={resetStorage}
+              onCancel={() => setShowResetConfirm(false)}
+            />
+          )}
+
+          {confirmRestore && (
+            <ConfirmModal
+              title="Restore Backup"
+              message={`This will restore "${confirmRestore}" to the database via the VIP. Existing data in affected databases will be overwritten. Are you sure?`}
+              confirmText="Restore"
+              confirmClass="danger"
+              onConfirm={() => restoreBackup(confirmRestore)}
+              onCancel={() => setConfirmRestore(null)}
+            />
+          )}
+
+          {taskViewer && (
+            <TaskViewer
+              title={taskViewer.title}
+              statusUrl={taskViewer.statusUrl}
+              onClose={closeTaskViewer}
+            />
+          )}
+
+          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        </div>
+      );
+    }
+
+    // ========== Node Detail View ==========
+    function NodeDetailTab({ node, systemData }) {
+      const p = node?.patroni || {};
+      const isLeader = p.role === 'master' || p.role === 'primary';
+      const isRunning = p.state === 'running';
+      const sys = systemData?.find(s => s.name === node?.name || s.hostname === node?.name);
+
+      return (
+        <div>
+          <div className="panel-grid cols-2">
+            <div className="panel">
+              <div className="panel-header">Patroni Status</div>
+              <div className="panel-body" style={{ padding: 0 }}>
+                <table className="kv-table">
+                  <tbody>
+                    <tr><td>Role</td><td><Badge type={isLeader ? 'ok' : 'info'} text={isLeader ? 'Leader' : 'Replica'} /></td></tr>
+                    <tr><td>State</td><td><Badge type={isRunning ? 'ok' : 'err'} text={p.state || 'unknown'} /></td></tr>
+                    <tr><td>PostgreSQL</td><td>{p.server_version || '-'}</td></tr>
+                    <tr><td>Timeline</td><td>{p.timeline || '-'}</td></tr>
+                    <tr><td>Patroni Version</td><td>{p.patroni?.version || '-'}</td></tr>
+                    <tr><td>Scope</td><td>{p.patroni?.scope || '-'}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="panel">
+              <div className="panel-header">System</div>
+              <div className="panel-body">
+                {!sys || sys.error ? <div className="empty">System data unavailable</div> : (
+                  <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+                    <Gauge percent={sys.memory?.used_percent || 0} label="Memory" detail={`${formatBytes(sys.memory?.total_bytes - sys.memory?.free_bytes)} / ${formatBytes(sys.memory?.total_bytes)}`} />
+                    <div className="gauge-container">
+                      <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                        <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-bright)' }}>{sys.cpu_count}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>Load: {sys.load_avg?.['1m']?.toFixed(2) ?? 'N/A'} / {sys.load_avg?.['5m']?.toFixed(2) ?? 'N/A'} / {sys.load_avg?.['15m']?.toFixed(2) ?? 'N/A'}</div>
+                      </div>
+                      <div className="gauge-label">CPU Cores</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========== Main App ==========
+    function App() {
+      const [cluster, setCluster] = useState(null);
+      const [databases, setDatabases] = useState([]);
+      const [connections, setConnections] = useState(null);
+      const [replication, setReplication] = useState([]);
+      const [system, setSystem] = useState([]);
+      const [lastUpdate, setLastUpdate] = useState(null);
+      const [error, setError] = useState(false);
+      const [view, setView] = useState({ type: 'cluster', tab: 'summary' });
+      const [sidebarFilter, setSidebarFilter] = useState('');
+      const [expanded, setExpanded] = useState({ cluster: true });
+      const [sidebarWidth, setSidebarWidth] = useState(() => {
+        try { return parseInt(localStorage.getItem('sidebarWidth')) || 240; } catch { return 240; }
+      });
+      const sidebarRef = React.useRef(null);
+      const draggingRef = React.useRef(false);
+
+      useEffect(() => {
+        const onMouseMove = (e) => {
+          if (!draggingRef.current) return;
+          const newWidth = Math.min(500, Math.max(180, e.clientX));
+          setSidebarWidth(newWidth);
+        };
+        const onMouseUp = () => {
+          if (draggingRef.current) {
+            draggingRef.current = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            try { localStorage.setItem('sidebarWidth', sidebarWidth); } catch {}
+          }
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        return () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); };
+      }, [sidebarWidth]);
+
+      const fetchData = useCallback(async () => {
+        try {
+          const [c, d, conn, r, s] = await Promise.all([
+            fetch('/api/cluster').then(r => r.json()),
+            fetch('/api/databases').then(r => r.json()),
+            fetch('/api/connections').then(r => r.json()),
+            fetch('/api/replication').then(r => r.json()),
+            fetch('/api/system').then(r => r.json())
+          ]);
+          setCluster(c); setDatabases(d); setConnections(conn); setReplication(r); setSystem(s);
+          setLastUpdate(new Date());
+          setError(false);
+        } catch { setError(true); }
+      }, []);
+
+      useEffect(() => {
+        fetchData();
+        const interval = setInterval(fetchData, 2000);
+        return () => clearInterval(interval);
+      }, [fetchData]);
+
+      const nodes = cluster?.nodes || [];
+      const nodesUp = nodes.filter(n => n.patroni?.state === 'running').length;
+      const leader = nodes.find(n => n.patroni?.role === 'master' || n.patroni?.role === 'primary');
+      const healthy = nodesUp === nodes.length && leader;
+
+      const clusterTabs = ['summary', 'nodes', 'connections', 'settings', 'backups'];
+      const nodeTabs = ['summary'];
+
+      const currentTabs = view.type === 'cluster' ? clusterTabs : nodeTabs;
+      const selectedNode = view.type === 'node' ? nodes.find(n => n.name === view.name) : null;
+
+      const breadcrumb = view.type === 'cluster'
+        ? [{ label: cluster?.cluster_name || 'Cluster' }]
+        : [{ label: cluster?.cluster_name || 'Cluster', onClick: () => setView({ type: 'cluster', tab: 'summary' }) }, { label: view.name }];
+
+      return (
+        <div className="layout">
+          {/* Topbar */}
+          <div className="topbar">
+            <div className="topbar-left">
+              <div className="topbar-logo">P</div>
+              <div className="topbar-title">PostgreSQL Cluster Manager</div>
+            </div>
+            <div className="topbar-right">
+              <VersionBadge />
+              <div className="topbar-status">
+                <div className={`status-indicator ${healthy ? 'ok' : error ? 'err' : 'warn'}`} />
+                <span>{healthy ? 'Healthy' : error ? 'Error' : 'Degraded'}</span>
+              </div>
+              <span>{lastUpdate ? lastUpdate.toLocaleTimeString() : '-'}</span>
+              <a href="https://github.com/iadityaharsh/postgresql-cluster" target="_blank" rel="noopener noreferrer"
+                 style={{ color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', background: 'var(--bg-btn)', border: '1px solid var(--border)', borderRadius: 4, textDecoration: 'none', fontSize: 12, transition: 'all 0.15s' }}
+                 onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-btn-hover)'; }}
+                 onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-btn)'; }}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0 }}>
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+                <span style={{ fontWeight: 500 }}>postgresql-cluster</span>
+                <GithubStars />
+              </a>
+            </div>
+          </div>
+
+          <div className="body-row">
+          {/* Sidebar — Proxmox-style tree */}
+          <div className="sidebar" ref={sidebarRef} style={{ display: 'flex', flexDirection: 'column', width: sidebarWidth }}>
+            <div className="sidebar-resize" onMouseDown={(e) => { e.preventDefault(); draggingRef.current = true; document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none'; }} />
+            <div className="tree-search">
+              <input type="text" placeholder="Search" value={sidebarFilter} onChange={e => setSidebarFilter(e.target.value)} />
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 50 }}>
+              {/* Cluster (Datacenter equivalent) */}
+              <div className="tree-node">
+                <div className={`tree-row ${view.type === 'cluster' && view.tab !== 'backups' ? 'active' : ''}`}
+                     onClick={() => { setView({ type: 'cluster', tab: 'summary' }); setExpanded(e => ({ ...e, cluster: !e.cluster })); }}>
+                  <div className={`tree-arrow ${expanded.cluster ? 'open' : ''}`}>&#9654;</div>
+                  <div className="tree-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2"><rect x="2" y="3" width="20" height="6" rx="1"/><rect x="2" y="15" width="20" height="6" rx="1"/><path d="M12 9v6"/></svg>
+                  </div>
+                  <span className="tree-label" style={{ fontWeight: 600, color: 'var(--text-bright)' }}>{cluster?.cluster_name || 'pg-cluster'}</span>
+                  <span className={`tree-status ${nodesUp === nodes.length && nodes.length > 0 ? 'ok' : 'err'}`}></span>
+                </div>
+
+                {expanded.cluster && <div className="tree-children">
+                  {/* Nodes under cluster */}
+                  {nodes.filter(n => !sidebarFilter || n.name.toLowerCase().includes(sidebarFilter.toLowerCase())).map((node, i) => {
+                    const p = node.patroni || {};
+                    const isLeader = p.role === 'master' || p.role === 'primary';
+                    const isRunning = p.state === 'running';
+                    return (
+                      <div key={i} className="tree-node">
+                        <div className={`tree-row ${view.type === 'node' && view.name === node.name ? 'active' : ''}`}
+                             onClick={() => setView({ type: 'node', name: node.name, tab: 'summary' })}>
+                          <div className="tree-indent"></div>
+                          <div className="tree-arrow hidden">&#9654;</div>
+                          <div className="tree-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke={isRunning ? '#50c878' : '#e74c3c'} strokeWidth="2"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="9" x2="9" y2="9.01" strokeWidth="3" strokeLinecap="round"/><line x1="15" y1="9" x2="15" y2="9.01" strokeWidth="3" strokeLinecap="round"/><path d="M4 15h16"/></svg>
+                          </div>
+                          <span className="tree-label">{node.name}</span>
+                          {isRunning ? (
+                            <span className={`tree-badge ${isLeader ? 'leader' : 'replica'}`}>{isLeader ? 'Leader' : 'Replica'}</span>
+                          ) : (
+                            <span className="tree-badge down">offline</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Databases under cluster */}
+                  {(databases || []).filter(db => !sidebarFilter || db.datname.toLowerCase().includes(sidebarFilter.toLowerCase())).map((db, i) => (
+                    <div key={`db-${i}`} className="tree-node">
+                      <div className="tree-row" onClick={() => setView({ type: 'cluster', tab: 'summary' })}>
+                        <div className="tree-indent"></div>
+                        <div className="tree-arrow hidden">&#9654;</div>
+                        <div className="tree-icon">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#f0ad4e" strokeWidth="2"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6"/><path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>
+                        </div>
+                        <span className="tree-label">{db.datname}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>}
+              </div>
+
+            </div>
+
+            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--text-faint)', background: 'var(--bg-sidebar)' }}>
+              {cluster?.vip && <div>VIP: {cluster.vip}:{cluster.pg_port}</div>}
+              <div style={{ marginTop: 2 }}>{nodesUp}/{nodes.length} nodes online</div>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="main">
+            <div className="content-header">
+              <div className="breadcrumb">
+                {breadcrumb.map((b, i) => (
+                  <React.Fragment key={i}>
+                    {i > 0 && <span className="sep">/</span>}
+                    {b.onClick ? <span style={{ cursor: 'pointer', color: 'var(--accent)' }} onClick={b.onClick}>{b.label}</span> : <strong>{b.label}</strong>}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            <div className="tabs">
+              {currentTabs.map(tab => (
+                <div key={tab} className={`tab ${view.tab === tab ? 'active' : ''}`}
+                     onClick={() => setView(v => ({ ...v, tab }))}>
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </div>
+              ))}
+            </div>
+
+            <div className="tab-content">
+              {view.type === 'cluster' && view.tab === 'summary' && <SummaryTab cluster={cluster} connections={connections} replication={replication} system={system} databases={databases} />}
+              {view.type === 'cluster' && view.tab === 'nodes' && <NodesTab cluster={cluster} replication={replication} />}
+              {view.type === 'cluster' && view.tab === 'connections' && <ConnectionsTab connections={connections} />}
+              {view.type === 'cluster' && view.tab === 'settings' && <SettingsTab />}
+              {view.type === 'cluster' && view.tab === 'backups' && <BackupsTab />}
+              {view.type === 'node' && view.tab === 'summary' && <NodeDetailTab node={selectedNode} systemData={system} />}
+            </div>
+          </div>
+          </div>{/* /body-row */}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
