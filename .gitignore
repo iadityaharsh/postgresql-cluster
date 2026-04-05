@@ -1,4 +1,5 @@
 cluster.conf
 hyperdrive.conf
 hyperdrive.json
+auth.json
 *.zip

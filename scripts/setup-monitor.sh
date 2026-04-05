@@ -30,6 +30,7 @@ fi
 mkdir -p /opt/pg-monitor
 cp -r "${BASE_DIR}/web/"* /opt/pg-monitor/
 cp "${BASE_DIR}/cluster.conf" /opt/pg-monitor/ 2>/dev/null || true
+cp "${BASE_DIR}/auth.json" /opt/pg-monitor/ 2>/dev/null || true
 
 # Write version from git tag
 cd "${BASE_DIR}"

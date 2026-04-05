@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const { Pool } = require('pg');
 const { execFile, spawn } = require('child_process');
 const fs = require('fs');
@@ -61,6 +62,130 @@ for (let i = 1; i <= NODE_COUNT; i++) {
 
 const app = express();
 app.use(express.json());
+
+// ── Authentication ──
+const AUTH_PATH = [
+  path.resolve(__dirname, 'auth.json'),
+  path.resolve(__dirname, '..', 'auth.json')
+].find(p => fs.existsSync(p));
+
+function loadAuth() {
+  if (!AUTH_PATH) return null;
+  try { return JSON.parse(fs.readFileSync(AUTH_PATH, 'utf8')); }
+  catch { return null; }
+}
+
+let authConfig = loadAuth();
+const sessions = new Map(); // token -> { username, created }
+
+function verifyPassword(password, hash, salt) {
+  return new Promise((resolve) => {
+    crypto.scrypt(password, Buffer.from(salt, 'hex'), 64, { N: 16384, r: 8, p: 1 }, (err, derived) => {
+      if (err) return resolve(false);
+      resolve(derived.toString('hex') === hash);
+    });
+  });
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, Buffer.from(salt, 'hex'), 64, { N: 16384, r: 8, p: 1 }, (err, derived) => {
+      if (err) return reject(err);
+      resolve({ hash: derived.toString('hex'), salt });
+    });
+  });
+}
+
+function parseCookies(header) {
+  const cookies = {};
+  if (!header) return cookies;
+  header.split(';').forEach(c => {
+    const [k, ...v] = c.split('=');
+    if (k) cookies[k.trim()] = v.join('=').trim();
+  });
+  return cookies;
+}
+
+// Internal node-to-node endpoints that skip auth
+const INTERNAL_PATHS = ['/api/tunnel/local', '/api/system/local', '/api/version', '/api/restart/local', '/api/restart/monitor',
+  '/api/tunnel/apply', '/api/tunnel/setup', '/api/storage/apply', '/api/version/upgrade/apply', '/api/login', '/api/auth/status'];
+
+app.use((req, res, next) => {
+  // No auth configured — allow everything
+  if (!authConfig) return next();
+  // Allow internal node-to-node and auth endpoints
+  if (INTERNAL_PATHS.some(p => req.path === p || req.path.startsWith(p + '/'))) return next();
+  // Allow static files (login page needs to load)
+  if (!req.path.startsWith('/api/')) return next();
+  // Check session token from cookie
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies['pg_session'];
+  if (token && sessions.has(token)) return next();
+  res.status(401).json({ error: 'Unauthorized' });
+});
+
+// POST /api/login
+app.post('/api/login', async (req, res) => {
+  if (!authConfig) return res.json({ message: 'No auth configured' });
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+  if (username !== authConfig.username) return res.status(401).json({ error: 'Invalid credentials' });
+  const valid = await verifyPassword(password, authConfig.hash, authConfig.salt);
+  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { username, created: Date.now() });
+  res.setHeader('Set-Cookie', `pg_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400`);
+  res.json({ message: 'Logged in' });
+});
+
+// POST /api/logout
+app.post('/api/logout', (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies['pg_session'];
+  if (token) sessions.delete(token);
+  res.setHeader('Set-Cookie', 'pg_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+  res.json({ message: 'Logged out' });
+});
+
+// GET /api/auth/status — check if auth is required and if user is logged in
+app.get('/api/auth/status', (req, res) => {
+  const cookies = parseCookies(req.headers.cookie);
+  const token = cookies['pg_session'];
+  const loggedIn = token && sessions.has(token);
+  res.json({ auth_required: !!authConfig, logged_in: loggedIn, username: loggedIn ? sessions.get(token).username : null });
+});
+
+// POST /api/auth/change-password — change dashboard password
+app.post('/api/auth/change-password', async (req, res) => {
+  if (!authConfig) return res.status(400).json({ error: 'No auth configured' });
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) return res.status(400).json({ error: 'Current and new password required' });
+  const valid = await verifyPassword(current_password, authConfig.hash, authConfig.salt);
+  if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+  if (new_password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  try {
+    const { hash, salt } = await hashPassword(new_password);
+    authConfig.hash = hash;
+    authConfig.salt = salt;
+    fs.writeFileSync(AUTH_PATH, JSON.stringify(authConfig, null, 2));
+    // Clear all sessions so user must re-login
+    sessions.clear();
+    res.json({ message: 'Password changed. Please log in again.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Clean up expired sessions every hour
+setInterval(() => {
+  const maxAge = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (now - session.created > maxAge) sessions.delete(token);
+  }
+}, 60 * 60 * 1000);
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Fetch JSON from a URL with timeout
@@ -308,15 +433,29 @@ app.get('/api/config', (req, res) => {
   });
 });
 
-// GET /api/config/export — download cluster.conf as file
+// GET /api/config/export — download cluster.conf + auth.json as combined backup
 app.get('/api/config/export', (req, res) => {
   if (!fs.existsSync(confPath)) return res.status(404).json({ error: 'cluster.conf not found' });
   const content = fs.readFileSync(confPath, 'utf8');
-  // Redact sensitive fields
   const redacted = content.replace(/^(PG_REPL_PASS|PG_ADMIN_PASS|SMB_PASS)="[^"]*"/gm, '$1="***REDACTED***"');
+
+  let output = redacted;
+  // Append auth config (username + hash, password not recoverable)
+  if (AUTH_PATH && fs.existsSync(AUTH_PATH)) {
+    const auth = loadAuth();
+    if (auth) {
+      output += '\n\n# ================================================================\n';
+      output += '# Dashboard Authentication (auth.json)\n';
+      output += '# Password is hashed — not recoverable from this backup.\n';
+      output += '# To restore: copy the auth.json section below into auth.json\n';
+      output += '# ================================================================\n';
+      output += `# AUTH_JSON=${JSON.stringify(auth)}\n`;
+    }
+  }
+
   res.setHeader('Content-Type', 'text/plain');
   res.setHeader('Content-Disposition', `attachment; filename="cluster-${CLUSTER_NAME}-${new Date().toISOString().slice(0,10)}.conf"`);
-  res.send(redacted);
+  res.send(output);
 });
 
 // GET /api/config/patroni — export patroni config from all nodes

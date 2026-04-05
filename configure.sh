@@ -157,6 +157,39 @@ echo "--- Monitoring Dashboard ---"
 read -rp "Monitoring web UI port [8080]: " MONITOR_PORT
 MONITOR_PORT="${MONITOR_PORT:-8080}"
 
+# ----- Dashboard login -----
+echo ""
+echo "--- Dashboard Login ---"
+echo "Set a username and password to protect the web dashboard."
+read -rp "Dashboard username [admin]: " DASH_USER
+DASH_USER="${DASH_USER:-admin}"
+
+read -rsp "Dashboard password: " DASH_PASS
+echo ""
+if [ -z "${DASH_PASS}" ]; then
+    DASH_PASS=$(openssl rand -base64 18 | tr -d '/+=' | head -c 16)
+    echo "  Auto-generated: ${DASH_PASS}"
+fi
+
+# Generate auth.json with scrypt hash
+DASH_SALT=$(openssl rand -hex 16)
+DASH_HASH=$(python3 -c "
+import hashlib, sys
+dk = hashlib.scrypt(sys.argv[1].encode(), salt=bytes.fromhex(sys.argv[2]), n=16384, r=8, p=1, dklen=64)
+print(dk.hex())
+" "${DASH_PASS}" "${DASH_SALT}")
+
+AUTH_FILE="${SCRIPT_DIR}/auth.json"
+cat > "${AUTH_FILE}" << AUTHEOF
+{
+  "username": "${DASH_USER}",
+  "hash": "${DASH_HASH}",
+  "salt": "${DASH_SALT}"
+}
+AUTHEOF
+chmod 600 "${AUTH_FILE}"
+echo "  Dashboard credentials saved to auth.json"
+
 # ----- etcd token -----
 ETCD_TOKEN=$(openssl rand -hex 8)
 

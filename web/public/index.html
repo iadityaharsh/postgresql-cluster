@@ -2006,7 +2006,59 @@
     }
 
     // ========== Main App ==========
+    // ========== Login Screen ==========
+    function LoginScreen({ onLogin }) {
+      const [username, setUsername] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+          const resp = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const d = await resp.json();
+          if (resp.ok) onLogin();
+          else setError(d.error || 'Login failed');
+        } catch { setError('Connection failed'); }
+        setLoading(false);
+      };
+
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--bg-base)' }}>
+          <div style={{ width: 340, padding: 32, background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 8 }}>
+            <div style={{ textAlign: 'center', marginBottom: 24 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 10, background: 'var(--accent)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>P</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-bright)' }}>PostgreSQL Cluster Manager</div>
+              <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>Sign in to access the dashboard</div>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="form-group" style={{ marginBottom: 12 }}>
+                <label>Username</label>
+                <input type="text" value={username} onChange={e => setUsername(e.target.value)} autoFocus autoComplete="username" />
+              </div>
+              <div className="form-group" style={{ marginBottom: 16 }}>
+                <label>Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+              </div>
+              {error && <div style={{ color: 'var(--err)', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+              <button type="submit" className="btn primary" style={{ width: '100%', height: 36, fontSize: 13, fontWeight: 600 }} disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
     function App() {
+      const [authStatus, setAuthStatus] = useState(null);
       const [cluster, setCluster] = useState(null);
       const [databases, setDatabases] = useState([]);
       const [connections, setConnections] = useState(null);
@@ -2042,6 +2094,11 @@
         return () => { document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); };
       }, [sidebarWidth]);
 
+      // Check auth status on mount
+      useEffect(() => {
+        fetch('/api/auth/status').then(r => r.json()).then(setAuthStatus).catch(() => setAuthStatus({ auth_required: false, logged_in: true }));
+      }, []);
+
       const fetchData = useCallback(async () => {
         try {
           const [c, d, conn, r, s] = await Promise.all([
@@ -2058,10 +2115,18 @@
       }, []);
 
       useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 2000);
-        return () => clearInterval(interval);
-      }, [fetchData]);
+        if (authStatus && (!authStatus.auth_required || authStatus.logged_in)) {
+          fetchData();
+          const interval = setInterval(fetchData, 2000);
+          return () => clearInterval(interval);
+        }
+      }, [fetchData, authStatus]);
+
+      // Show login screen if auth required and not logged in
+      if (!authStatus) return null; // loading
+      if (authStatus.auth_required && !authStatus.logged_in) {
+        return <LoginScreen onLogin={() => setAuthStatus({ ...authStatus, logged_in: true })} />;
+      }
 
       const nodes = cluster?.nodes || [];
       const nodesUp = nodes.filter(n => n.patroni?.state === 'running').length;
@@ -2103,6 +2168,12 @@
                 <span style={{ fontWeight: 500 }}>postgresql-cluster</span>
                 <GithubStars />
               </a>
+              {authStatus?.auth_required && (
+                <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={async () => {
+                  await fetch('/api/logout', { method: 'POST' });
+                  setAuthStatus({ ...authStatus, logged_in: false });
+                }}>Logout</button>
+              )}
             </div>
           </div>
 
