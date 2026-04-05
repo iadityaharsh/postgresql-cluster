@@ -1252,42 +1252,56 @@ async function cfApiRequest(method, apiPath, body) {
   });
 }
 
-// GET /api/tunnel/routes — list all tunnels and their public hostname routes
+// Extract tunnel ID from the stored tunnel token (base64 JSON: {"a":"account","t":"tunnel_id","s":"secret"})
+function getClusterTunnelId() {
+  const token = conf.TUNNEL_TOKEN || '';
+  if (!token) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
+    return decoded.t || null;
+  } catch { return null; }
+}
+
+// GET /api/tunnel/routes — list only this cluster's tunnel and its public hostname routes
 app.get('/api/tunnel/routes', async (req, res) => {
-  // List tunnels on the account
-  const tunnelsResp = await cfApiRequest('GET', '/cfd_tunnel?is_deleted=false');
-  if (tunnelsResp.error || !tunnelsResp.success) {
-    return res.json({ available: false, error: tunnelsResp.error || tunnelsResp.errors?.[0]?.message || 'Failed to fetch tunnels', tunnels: [] });
+  const tunnelId = getClusterTunnelId();
+  if (!tunnelId) {
+    return res.json({ available: false, error: 'No tunnel configured. Set up a tunnel in Remote Access first.', tunnels: [] });
   }
 
-  const tunnels = (tunnelsResp.result || []).map(t => ({
+  // Fetch only this cluster's tunnel
+  const tunnelResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnelId}`);
+  if (tunnelResp.error || !tunnelResp.success) {
+    return res.json({ available: false, error: tunnelResp.error || tunnelResp.errors?.[0]?.message || 'Failed to fetch tunnel', tunnels: [] });
+  }
+
+  const t = tunnelResp.result;
+  const tunnel = {
     id: t.id,
     name: t.name,
     status: t.status,
     created: t.created_at,
     connectors: (t.connections || []).length
-  }));
+  };
 
-  // For each active tunnel, fetch its configuration (ingress rules / public hostnames)
-  for (const tunnel of tunnels) {
-    const cfgResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnel.id}/configurations`);
-    if (cfgResp.success && cfgResp.result?.config?.ingress) {
-      tunnel.routes = cfgResp.result.config.ingress
-        .filter(r => r.hostname) // exclude catch-all
-        .map(r => ({
-          hostname: r.hostname,
-          service: r.service,
-          path: r.path || '',
-          originRequest: r.originRequest || {}
-        }));
-      tunnel.catch_all = cfgResp.result.config.ingress.find(r => !r.hostname)?.service || 'http_status:404';
-    } else {
-      tunnel.routes = [];
-      tunnel.catch_all = 'http_status:404';
-    }
+  // Fetch its configuration (ingress rules / public hostnames)
+  const cfgResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnel.id}/configurations`);
+  if (cfgResp.success && cfgResp.result?.config?.ingress) {
+    tunnel.routes = cfgResp.result.config.ingress
+      .filter(r => r.hostname)
+      .map(r => ({
+        hostname: r.hostname,
+        service: r.service,
+        path: r.path || '',
+        originRequest: r.originRequest || {}
+      }));
+    tunnel.catch_all = cfgResp.result.config.ingress.find(r => !r.hostname)?.service || 'http_status:404';
+  } else {
+    tunnel.routes = [];
+    tunnel.catch_all = 'http_status:404';
   }
 
-  res.json({ available: true, tunnels });
+  res.json({ available: true, tunnels: [tunnel] });
 });
 
 // POST /api/tunnel/routes — add a new public hostname route to a tunnel
