@@ -22,6 +22,47 @@ if [ -f "${CONF_FILE}" ]; then
     read -rp "Overwrite? (y/N): " OVERWRITE
     if [[ "${OVERWRITE}" != "y" && "${OVERWRITE}" != "Y" ]]; then
         echo "Keeping existing configuration."
+        echo ""
+        # Still offer to set/update dashboard login
+        AUTH_FILE="${SCRIPT_DIR}/auth.json"
+        if [ -f "${AUTH_FILE}" ]; then
+            read -rp "Update dashboard login credentials? (y/N): " UPDATE_AUTH
+        else
+            echo "No dashboard login configured yet."
+            read -rp "Set up dashboard login? (Y/n): " UPDATE_AUTH
+            UPDATE_AUTH="${UPDATE_AUTH:-Y}"
+        fi
+        if [[ "${UPDATE_AUTH}" == "y" || "${UPDATE_AUTH}" == "Y" ]]; then
+            echo ""
+            echo "--- Dashboard Login ---"
+            read -rp "Dashboard username [admin]: " DASH_USER
+            DASH_USER="${DASH_USER:-admin}"
+            read -rsp "Dashboard password: " DASH_PASS
+            echo ""
+            if [ -z "${DASH_PASS}" ]; then
+                DASH_PASS=$(openssl rand -base64 18 | tr -d '/+=' | head -c 16)
+                echo "  Auto-generated: ${DASH_PASS}"
+            fi
+            DASH_SALT=$(openssl rand -hex 16)
+            DASH_HASH=$(python3 -c "
+import hashlib, sys
+dk = hashlib.scrypt(sys.argv[1].encode(), salt=bytes.fromhex(sys.argv[2]), n=16384, r=8, p=1, dklen=64)
+print(dk.hex())
+" "${DASH_PASS}" "${DASH_SALT}")
+            cat > "${AUTH_FILE}" << AUTHEOF
+{
+  "username": "${DASH_USER}",
+  "hash": "${DASH_HASH}",
+  "salt": "${DASH_SALT}"
+}
+AUTHEOF
+            chmod 600 "${AUTH_FILE}"
+            echo "  Credentials saved to auth.json"
+            echo ""
+            echo "  Copy to each node and restart the dashboard:"
+            echo "    scp auth.json root@<NODE_IP>:/opt/pg-monitor/"
+            echo "    sudo systemctl restart pg-monitor"
+        fi
         exit 0
     fi
     echo ""
