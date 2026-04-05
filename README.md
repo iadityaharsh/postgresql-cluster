@@ -151,7 +151,8 @@ lxc restart <container-name>
 
 - **[Quick Start](docs/QUICK-START.md)** — Step-by-step setup commands
 - **[Detailed Setup](docs/SETUP.md)** — Full documentation and common operations
-- **[Remote Access](docs/remote-access.md)** — Cloudflare Tunnel (token-based HA), Access policies, Workers, Hyperdrive
+- **[Remote Access](docs/remote-access.md)** — Cloudflare Tunnel (token-based HA), Access policies, Workers
+- **[Hyperdrive](docs/hyperdrive.md)** — Connect Cloudflare Workers to the cluster via Hyperdrive (edge connection pooling)
 
 ## License
 
