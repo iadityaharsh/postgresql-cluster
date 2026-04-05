@@ -561,8 +561,11 @@
     }
 
     // ========== Tab: Nodes ==========
-    function NodesTab({ cluster, replication }) {
+    function NodesTab({ cluster, replication, connections }) {
       const nodes = cluster?.nodes || [];
+      const connTotal = connections?.by_state?.reduce((s, c) => s + parseInt(c.count), 0) || 0;
+      const connMax = connections?.max_connections || 0;
+      const connPct = connMax ? ((connTotal / connMax) * 100) : 0;
       return (
         <div>
           <div className="panel">
@@ -616,54 +619,45 @@
               </table>
             </div>
           </div>
-        </div>
-      );
-    }
 
-    // ========== Tab: Connections ==========
-    function ConnectionsTab({ connections }) {
-      if (!connections || !connections.by_state) return <div className="empty">No connection data</div>;
-      const total = connections.by_state.reduce((s, c) => s + parseInt(c.count), 0);
-      const max = connections.max_connections;
-      const pct = max ? ((total / max) * 100) : 0;
-      return (
-        <div>
-          <div className="panel-grid cols-2">
-            <div className="panel">
-              <div className="panel-header">Usage</div>
-              <div className="panel-body" style={{ display: 'flex', justifyContent: 'center' }}>
-                <Gauge percent={pct} label="Connection Usage" detail={`${total} / ${max}`} size={120} />
+          {connections?.by_state && (
+            <div className="panel-grid cols-2">
+              <div className="panel">
+                <div className="panel-header">Connection Usage</div>
+                <div className="panel-body" style={{ display: 'flex', justifyContent: 'center' }}>
+                  <Gauge percent={connPct} label="Connection Usage" detail={`${connTotal} / ${connMax}`} size={120} />
+                </div>
               </div>
-            </div>
-            <div className="panel">
-              <div className="panel-header">By State</div>
-              <div className="panel-body" style={{ padding: 0 }}>
-                <table>
-                  <thead><tr><th>State</th><th>Count</th><th>Percentage</th></tr></thead>
-                  <tbody>
-                    {connections.by_state.map((s, i) => {
-                      const cnt = parseInt(s.count);
-                      const p = total ? ((cnt / total) * 100).toFixed(1) : 0;
-                      return (
-                        <tr key={i}>
-                          <td>{s.state || 'null'}</td>
-                          <td style={{ fontWeight: 600 }}>{cnt}</td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div className="progress" style={{ flex: 1 }}>
-                                <div className="progress-fill ok" style={{ width: `${p}%` }} />
+              <div className="panel">
+                <div className="panel-header">Connections by State</div>
+                <div className="panel-body" style={{ padding: 0 }}>
+                  <table>
+                    <thead><tr><th>State</th><th>Count</th><th>Percentage</th></tr></thead>
+                    <tbody>
+                      {connections.by_state.map((s, i) => {
+                        const cnt = parseInt(s.count);
+                        const p = connTotal ? ((cnt / connTotal) * 100).toFixed(1) : 0;
+                        return (
+                          <tr key={i}>
+                            <td>{s.state || 'null'}</td>
+                            <td style={{ fontWeight: 600 }}>{cnt}</td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div className="progress" style={{ flex: 1 }}>
+                                  <div className="progress-fill ok" style={{ width: `${p}%` }} />
+                                </div>
+                                <span style={{ fontSize: 11, color: 'var(--text-dim)', width: 36 }}>{p}%</span>
                               </div>
-                              <span style={{ fontSize: 11, color: 'var(--text-dim)', width: 36 }}>{p}%</span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       );
     }
@@ -2074,7 +2068,7 @@
       const leader = nodes.find(n => n.patroni?.role === 'master' || n.patroni?.role === 'primary');
       const healthy = nodesUp === nodes.length && leader;
 
-      const clusterTabs = ['summary', 'nodes', 'connections', 'settings', 'backups'];
+      const clusterTabs = ['summary', 'nodes', 'settings', 'backups'];
       const nodeTabs = ['summary'];
 
       const currentTabs = view.type === 'cluster' ? clusterTabs : nodeTabs;
@@ -2207,8 +2201,7 @@
 
             <div className="tab-content">
               {view.type === 'cluster' && view.tab === 'summary' && <SummaryTab cluster={cluster} connections={connections} replication={replication} system={system} databases={databases} />}
-              {view.type === 'cluster' && view.tab === 'nodes' && <NodesTab cluster={cluster} replication={replication} />}
-              {view.type === 'cluster' && view.tab === 'connections' && <ConnectionsTab connections={connections} />}
+              {view.type === 'cluster' && view.tab === 'nodes' && <NodesTab cluster={cluster} replication={replication} connections={connections} />}
               {view.type === 'cluster' && view.tab === 'settings' && <SettingsTab />}
               {view.type === 'cluster' && view.tab === 'backups' && <BackupsTab />}
               {view.type === 'node' && view.tab === 'summary' && <NodeDetailTab node={selectedNode} systemData={system} />}
