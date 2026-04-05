@@ -746,8 +746,8 @@
       );
     }
 
-    // ========== Tunnel Routes Section ==========
-    function TunnelRoutesSection() {
+    // ========== Tunnel Routes (inline, rendered inside Remote Access panel) ==========
+    function TunnelRoutesInline() {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [toast, setToast] = useState(null);
@@ -818,84 +818,61 @@
         } catch { setToast({ message: 'Delete failed', type: 'error' }); }
       };
 
-      if (loading) return (
-        <div className="panel">
-          <div className="panel-header"><span>Tunnel Routes</span></div>
-          <div className="panel-body" style={{ color: 'var(--text-muted)' }}>Loading...</div>
-        </div>
-      );
+      if (loading) return <div style={{ color: 'var(--text-muted)', padding: '8px 0' }}>Loading routes...</div>;
 
-      if (!data?.available) return (
-        <div className="panel">
-          <div className="panel-header"><span>Tunnel Routes</span></div>
-          <div className="panel-body">
-            <p style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-              {data?.error || 'Save Cloudflare API credentials in the Hyperdrive section below to manage tunnel routes.'}
-            </p>
-          </div>
-        </div>
-      );
+      if (!data?.available) return null;
 
       const tunnels = data.tunnels || [];
+      if (tunnels.length === 0) return null;
 
       return (
         <div>
           {tunnels.map(tunnel => (
-            <div key={tunnel.id} className="panel">
-              <div className="panel-header">
-                <span>
-                  Tunnel: {tunnel.name}
+            <div key={tunnel.id} style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)' }}>
+                  Public Hostnames
                   <span style={{ marginLeft: 8 }}>
                     {tunnel.status === 'healthy' ? <Badge type="ok" text="Healthy" /> : tunnel.status === 'inactive' ? <Badge type="warn" text="Inactive" /> : <Badge type="info" text={tunnel.status || 'Unknown'} />}
                   </span>
-                  <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 8 }}>{tunnel.connectors} connector{tunnel.connectors !== 1 ? 's' : ''}</span>
-                </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 8, fontWeight: 400 }}>{tunnel.name} &middot; {tunnel.connectors} connector{tunnel.connectors !== 1 ? 's' : ''}</span>
+                </div>
                 <button className="btn primary" style={{ padding: '3px 10px', fontSize: 11 }} onClick={() => openAdd(tunnel.id)}>+ Add Route</button>
               </div>
-              <div className="panel-body" style={{ padding: 0 }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Public Hostname</th>
-                      <th>Service</th>
-                      <th style={{ width: 100 }}></th>
+              <table className="data-table" style={{ borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+                <thead>
+                  <tr>
+                    <th>Hostname</th>
+                    <th>Service</th>
+                    <th style={{ width: 100 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(tunnel.routes || []).map(route => (
+                    <tr key={route.hostname}>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{route.hostname}</td>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-muted)' }}>{route.service}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => openEdit(tunnel.id, route)}>Edit</button>
+                          <button className="btn" style={{ padding: '2px 8px', fontSize: 11, color: 'var(--err)' }} onClick={() => setConfirmDelete({ tunnelId: tunnel.id, hostname: route.hostname })}>Delete</button>
+                        </div>
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {(tunnel.routes || []).map(route => (
-                      <tr key={route.hostname}>
-                        <td style={{ fontFamily: 'monospace', fontSize: 12 }}>{route.hostname}</td>
-                        <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-muted)' }}>{route.service}</td>
-                        <td>
-                          <div style={{ display: 'flex', gap: 4 }}>
-                            <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => openEdit(tunnel.id, route)}>Edit</button>
-                            <button className="btn" style={{ padding: '2px 8px', fontSize: 11, color: 'var(--err)' }} onClick={() => setConfirmDelete({ tunnelId: tunnel.id, hostname: route.hostname })}>Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {(tunnel.routes || []).length === 0 && (
-                      <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 16 }}>No public hostname routes configured</td></tr>
-                    )}
-                    <tr style={{ opacity: 0.5 }}>
-                      <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>* (catch-all)</td>
-                      <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)' }}>{tunnel.catch_all}</td>
-                      <td></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                  {(tunnel.routes || []).length === 0 && (
+                    <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 16 }}>No public hostname routes configured</td></tr>
+                  )}
+                  <tr style={{ opacity: 0.5 }}>
+                    <td style={{ fontSize: 11, color: 'var(--text-dim)' }}>* (catch-all)</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)' }}>{tunnel.catch_all}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           ))}
 
-          {tunnels.length === 0 && (
-            <div className="panel">
-              <div className="panel-header"><span>Tunnel Routes</span></div>
-              <div className="panel-body"><p style={{ fontSize: 12, color: 'var(--text-dim)' }}>No tunnels found on this Cloudflare account.</p></div>
-            </div>
-          )}
-
-          {/* Add/Edit route modal */}
           {showForm && (
             <div className="modal-overlay" onClick={() => setShowForm(false)}>
               <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
@@ -1451,11 +1428,11 @@
                   {tunnelActive ? 'Reconfigure All Nodes' : 'Setup All Nodes'}
                 </button>
               </div>
+
+              {/* Tunnel public hostname routes — inline */}
+              <TunnelRoutesInline />
             </div>
           </div>
-
-          {/* Tunnel Routes */}
-          <TunnelRoutesSection />
 
           {/* Hyperdrive */}
           <HyperdriveSection />
