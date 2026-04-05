@@ -953,7 +953,7 @@
       const [updateKey, setUpdateKey] = useState(null);
       const [updatePassword, setUpdatePassword] = useState('');
       const [copiedId, setCopiedId] = useState(null);
-      const [cfAuth, setCfAuth] = useState({ account_id: '', api_token: '' });
+      const [cfAuth, setCfAuth] = useState({ api_token: '' });
       const [savingAuth, setSavingAuth] = useState(false);
 
       const fetchData = useCallback(async () => {
@@ -1061,7 +1061,7 @@
       const closeTasks = () => { setTaskViewer(null); fetchData(); };
 
       const saveCfAuth = async () => {
-        if (!cfAuth.account_id || !cfAuth.api_token) return setToast({ message: 'Both Account ID and API Token are required', type: 'error' });
+        if (!cfAuth.api_token) return setToast({ message: 'API Token is required', type: 'error' });
         setSavingAuth(true);
         try {
           const resp = await fetch('/api/hyperdrive/cloudflare-auth', {
@@ -1080,7 +1080,7 @@
         try {
           const resp = await fetch('/api/hyperdrive/cloudflare-auth', { method: 'DELETE' });
           const d = await resp.json();
-          if (resp.ok) { setToast({ message: 'Credentials cleared', type: 'ok' }); setCfAuth({ account_id: '', api_token: '' }); setTimeout(fetchData, 500); }
+          if (resp.ok) { setToast({ message: 'Credentials cleared', type: 'ok' }); setCfAuth({ api_token: '' }); setTimeout(fetchData, 500); }
           else setToast({ message: d.error, type: 'error' });
         } catch { setToast({ message: 'Failed to reset credentials', type: 'error' }); }
       };
@@ -1114,14 +1114,10 @@
                 <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Cloudflare API Credentials</div>
                   <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
-                    Required to auto-detect existing Hyperdrive configs. Create an API token at <strong>Cloudflare Dashboard &gt; My Profile &gt; API Tokens</strong> with <em>Hyperdrive Edit</em> permission.
+                    Required to auto-detect existing Hyperdrive configs and manage tunnel routes. Create an API token at <strong>Cloudflare Dashboard &gt; My Profile &gt; API Tokens</strong> with <em>Hyperdrive</em> and <em>Cloudflare Tunnel</em> permissions. Account ID is auto-detected.
                   </p>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div className="form-group" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
-                      <label>Account ID</label>
-                      <input type="text" placeholder="e.g. a1b2c3d4..." value={cfAuth.account_id} onChange={e => setCfAuth(a => ({ ...a, account_id: e.target.value }))} />
-                    </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                    <div className="form-group" style={{ flex: 1, minWidth: 250, marginBottom: 0 }}>
                       <label>API Token</label>
                       <input type="password" placeholder="Cloudflare API token" value={cfAuth.api_token} onChange={e => setCfAuth(a => ({ ...a, api_token: e.target.value }))} />
                     </div>

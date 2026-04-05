@@ -1168,10 +1168,57 @@ app.get('/api/tunnel/status', (req, res) => {
 // Cloudflare API helper for tunnel route management
 // ============================================================
 
-function cfApiRequest(method, apiPath, body) {
-  const token = process.env.CLOUDFLARE_API_TOKEN || conf.CLOUDFLARE_API_TOKEN || '';
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || conf.CLOUDFLARE_ACCOUNT_ID || '';
-  if (!token || !accountId) return Promise.resolve({ error: 'Cloudflare API credentials not configured' });
+// Cache the auto-detected account ID in memory
+let cachedAccountId = '';
+
+function getCfToken() {
+  return process.env.CLOUDFLARE_API_TOKEN || conf.CLOUDFLARE_API_TOKEN || '';
+}
+
+// Auto-detect account ID from the API token
+function fetchAccountId(token) {
+  return new Promise((resolve) => {
+    const req = https.get('https://api.cloudflare.com/client/v4/accounts?per_page=1', {
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      timeout: 10000
+    }, (resp) => {
+      let body = '';
+      resp.on('data', d => body += d);
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          if (data.success && data.result?.length > 0) resolve(data.result[0].id);
+          else resolve(null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+async function getAccountId() {
+  // Explicit config takes priority
+  const explicit = process.env.CLOUDFLARE_ACCOUNT_ID || conf.CLOUDFLARE_ACCOUNT_ID || '';
+  if (explicit) return explicit;
+  // Use cached value
+  if (cachedAccountId) return cachedAccountId;
+  // Auto-detect from token
+  const token = getCfToken();
+  if (!token) return '';
+  const id = await fetchAccountId(token);
+  if (id) {
+    cachedAccountId = id;
+    // Persist so we don't re-fetch every restart
+    try { updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: id }); } catch {}
+  }
+  return id || '';
+}
+
+async function cfApiRequest(method, apiPath, body) {
+  const token = getCfToken();
+  const accountId = await getAccountId();
+  if (!token || !accountId) return { error: 'Cloudflare API credentials not configured' };
 
   const fullPath = `/client/v4/accounts/${accountId}${apiPath}`;
   const postData = body ? JSON.stringify(body) : null;
@@ -1362,28 +1409,13 @@ function writeHyperdriveConfigs(configs) {
 }
 
 // Fetch Hyperdrive configs from Cloudflare API
-function fetchCloudflareHyperdrives() {
-  const token = process.env.CLOUDFLARE_API_TOKEN || conf.CLOUDFLARE_API_TOKEN || '';
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || conf.CLOUDFLARE_ACCOUNT_ID || '';
-  if (!token || !accountId) return Promise.resolve(null);
+async function fetchCloudflareHyperdrives() {
+  const token = getCfToken();
+  const accountId = await getAccountId();
+  if (!token || !accountId) return null;
 
-  return new Promise((resolve) => {
-    const req = https.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/hyperdrive/configs`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      timeout: 8000
-    }, (resp) => {
-      let body = '';
-      resp.on('data', d => body += d);
-      resp.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          resolve(data.success ? (data.result || []) : null);
-        } catch { resolve(null); }
-      });
-    });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
-  });
+  const resp = await cfApiRequest('GET', '/hyperdrive/configs');
+  return resp.success ? (resp.result || []) : null;
 }
 
 // GET /api/hyperdrive — list all configs + databases with status
@@ -1481,16 +1513,26 @@ app.get('/api/hyperdrive', async (req, res) => {
   res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable });
 });
 
-// POST /api/hyperdrive/cloudflare-auth — save Cloudflare API credentials to cluster.conf
-app.post('/api/hyperdrive/cloudflare-auth', (req, res) => {
-  const { account_id, api_token } = req.body;
-  if (!account_id || !api_token) return res.status(400).json({ error: 'account_id and api_token are required' });
+// POST /api/hyperdrive/cloudflare-auth — save Cloudflare API token, auto-detect account ID
+app.post('/api/hyperdrive/cloudflare-auth', async (req, res) => {
+  const { api_token } = req.body;
+  if (!api_token) return res.status(400).json({ error: 'api_token is required' });
   try {
-    updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: account_id, CLOUDFLARE_API_TOKEN: api_token });
-    // Also set as env vars for the current process
-    process.env.CLOUDFLARE_ACCOUNT_ID = account_id;
+    // Set token first so getAccountId() can use it
     process.env.CLOUDFLARE_API_TOKEN = api_token;
-    res.json({ message: 'Cloudflare credentials saved' });
+    cachedAccountId = ''; // clear cache to force re-detect
+    updateConfKeys({ CLOUDFLARE_API_TOKEN: api_token });
+
+    // Auto-detect account ID
+    const accountId = await fetchAccountId(api_token);
+    if (accountId) {
+      cachedAccountId = accountId;
+      process.env.CLOUDFLARE_ACCOUNT_ID = accountId;
+      updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: accountId });
+      res.json({ message: 'API token saved, account detected' });
+    } else {
+      res.json({ message: 'API token saved, but could not detect account ID. Check token permissions.' });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1502,6 +1544,7 @@ app.delete('/api/hyperdrive/cloudflare-auth', (req, res) => {
     updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: '', CLOUDFLARE_API_TOKEN: '' });
     delete process.env.CLOUDFLARE_ACCOUNT_ID;
     delete process.env.CLOUDFLARE_API_TOKEN;
+    cachedAccountId = '';
     res.json({ message: 'Credentials cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });
