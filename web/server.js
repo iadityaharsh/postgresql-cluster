@@ -1445,9 +1445,15 @@ app.get('/api/hyperdrive', async (req, res) => {
 
   // Fetch existing Hyperdrive configs from Cloudflare API and auto-merge
   let cfApiAvailable = false;
+  let cfAccountName = '';
   const remoteConfigs = await fetchCloudflareHyperdrives();
   if (remoteConfigs) {
     cfApiAvailable = true;
+    // Fetch account name
+    const accountResp = await cfApiRequest('GET', '');
+    if (accountResp.success && accountResp.result) {
+      cfAccountName = accountResp.result.name || '';
+    }
     let changed = false;
     for (const hd of remoteConfigs) {
       const origin = hd.origin || {};
@@ -1510,7 +1516,7 @@ app.get('/api/hyperdrive', async (req, res) => {
     }
   });
 
-  res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable });
+  res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable, cf_account_name: cfAccountName });
 });
 
 // POST /api/hyperdrive/cloudflare-auth — save Cloudflare API credentials
