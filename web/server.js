@@ -1193,28 +1193,29 @@ app.get('/api/hyperdrive', async (req, res) => {
 
   // Get database list from PostgreSQL
   let databases = [];
-  const pool = new Pool({
-    host: VIP || nodes[0].ip,
-    port: parseInt(PG_PORT),
-    user: 'postgres',
-    password: PG_PASS,
-    database: 'postgres',
-    connectionTimeoutMillis: 3000
-  });
   try {
+    const pool = new Pool({
+      host: VIP || nodes[0].ip,
+      port: parseInt(PG_PORT),
+      user: 'postgres',
+      password: PG_PASS,
+      database: 'postgres',
+      connectionTimeoutMillis: 3000,
+      query_timeout: 5000
+    });
     const result = await pool.query(`
       SELECT datname FROM pg_database
       WHERE datname NOT IN ('template0', 'template1')
       ORDER BY datname
     `);
     databases = result.rows.map(r => r.datname);
+    await pool.end().catch(() => {});
   } catch {}
-  await pool.end().catch(() => {});
 
-  // Check wrangler availability
+  // Check wrangler availability (quick — just check if binary exists)
   let wranglerInstalled = false;
   try {
-    require('child_process').execSync('npx wrangler --version 2>/dev/null', { timeout: 10000 });
+    require('child_process').execSync('command -v wrangler >/dev/null 2>&1 || command -v npx >/dev/null 2>&1', { timeout: 2000 });
     wranglerInstalled = true;
   } catch {}
 
