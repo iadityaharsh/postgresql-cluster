@@ -1473,7 +1473,7 @@
               )}
               {cfConnected && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {cfStatus.account_name && <span style={{ fontSize: 12, color: 'var(--text-bright)', fontWeight: 500 }}>{cfStatus.account_name}</span>}
+                  <span style={{ fontSize: 12, color: 'var(--text-bright)', fontWeight: 500 }}>{cfStatus.account_name || ('Account ID: ' + (cfStatus.account_id || ''))}</span>
                   <Badge type="ok" text="Connected" />
                   <button className="btn" style={{ padding: '3px 10px', fontSize: 11 }} onClick={resetCfAuth}>Reset Credentials</button>
                 </div>
