@@ -780,7 +780,7 @@
 
       const openSetup = (db) => {
         setFormDb(db);
-        setForm({ username: `cf_${db}`, password: '', hostname: '', hyperdrive_name: '', access_client_id: '', access_client_secret: '' });
+        setForm({ username: `${db}_cf`, password: '', hostname: '', hyperdrive_name: '', access_client_id: '', access_client_secret: '' });
         generatePassword();
         setShowForm(true);
       };
