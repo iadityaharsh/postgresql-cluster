@@ -1078,8 +1078,10 @@
                   {entries.map(entry => {
                     const cfg = entry.config;
                     const key = cfg ? `${cfg.database}-${cfg.username}` : null;
+                    const isPostgres = entry.database === 'postgres';
+                    const postgresDisabled = isPostgres && !data?.postgres_hyperdrive;
                     return (
-                      <tr key={entry.database}>
+                      <tr key={entry.database} style={postgresDisabled && !cfg ? { opacity: 0.5 } : undefined}>
                         <td style={{ fontWeight: 500 }}>{entry.database}{entry.missing && <span style={{ color: 'var(--warn)', fontSize: 10, marginLeft: 6 }}>dropped?</span>}</td>
                         <td style={{ fontSize: 12, color: cfg?.hostname ? 'var(--text)' : 'var(--text-dim)' }}>{cfg?.hostname || '\u2014'}</td>
                         <td style={{ fontFamily: 'monospace', fontSize: 11, color: cfg?.hyperdrive_id ? 'var(--text)' : 'var(--text-dim)' }}>
@@ -1089,7 +1091,7 @@
                             </span>
                           ) : '\u2014'}
                         </td>
-                        <td>{cfg ? <Badge type="ok" text="Connected" /> : <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>Not configured</span>}</td>
+                        <td>{cfg ? <Badge type="ok" text="Connected" /> : postgresDisabled ? <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>Disabled</span> : <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>Not configured</span>}</td>
                         <td>
                           {cfg ? (
                             <div style={{ display: 'flex', gap: 4 }}>
@@ -1097,6 +1099,8 @@
                               <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => { setUpdateKey(key); setUpdatePassword(''); }}>Edit</button>
                               <button className="btn" style={{ padding: '2px 8px', fontSize: 11, color: 'var(--err)' }} onClick={() => setConfirmDelete(key)}>Delete</button>
                             </div>
+                          ) : postgresDisabled ? (
+                            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>\u2014</span>
                           ) : (
                             <button className="btn primary" style={{ padding: '2px 10px', fontSize: 11 }} onClick={() => openSetup(entry.database)}>Setup</button>
                           )}
@@ -1109,6 +1113,9 @@
                   )}
                 </tbody>
               </table>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                The <strong>postgres</strong> database is disabled for Hyperdrive by default for security reasons. To enable it, add <code style={{ background: 'var(--bg-base)', padding: '1px 5px', borderRadius: 3, fontSize: 10 }}>POSTGRES_HYPERDRIVE="ON"</code> to <code style={{ background: 'var(--bg-base)', padding: '1px 5px', borderRadius: 3, fontSize: 10 }}>cluster.conf</code> on each node and restart the dashboard.
+              </div>
             </div>}
           </div>
 

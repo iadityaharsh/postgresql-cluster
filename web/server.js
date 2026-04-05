@@ -1674,7 +1674,8 @@ app.get('/api/hyperdrive', async (req, res) => {
     }
   });
 
-  res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable, cf_account_name: cfAccountName });
+  const postgresHyperdrive = (conf.POSTGRES_HYPERDRIVE || '').toUpperCase() === 'ON';
+  res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable, cf_account_name: cfAccountName, postgres_hyperdrive: postgresHyperdrive });
 });
 
 // GET /api/cloudflare-auth — check Cloudflare API credentials status
