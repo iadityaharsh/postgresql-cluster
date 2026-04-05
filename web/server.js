@@ -577,6 +577,112 @@ function compareVersions(a, b) {
   return 0;
 }
 
+// POST /api/restart/local — restart all services on this node (called by leader or directly)
+app.post('/api/restart/local', (req, res) => {
+  const services = ['etcd', 'patroni', 'vip-manager', 'cloudflared'];
+  const results = [];
+  for (const svc of services) {
+    try {
+      require('child_process').execSync(`systemctl is-enabled ${svc} 2>/dev/null`, { timeout: 3000 });
+      require('child_process').execSync(`systemctl restart ${svc}`, { timeout: 30000 });
+      results.push({ service: svc, status: 'restarted' });
+    } catch {
+      results.push({ service: svc, status: 'skipped' });
+    }
+  }
+  res.json({ results });
+});
+
+// POST /api/restart — restart all services on every node, then restart pg-monitor on all nodes
+let restartTask = { running: false, log: [], done: false };
+app.post('/api/restart', async (req, res) => {
+  if (restartTask.running) return res.status(409).json({ error: 'Restart already in progress' });
+  restartTask = { running: true, log: [], done: false };
+  res.json({ message: 'Restart initiated' });
+
+  // Phase 1: Restart cluster services on all nodes (etcd, patroni, vip-manager, cloudflared)
+  for (const node of nodes) {
+    restartTask.log.push(`Restarting services on ${node.name} (${node.ip})...`);
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const r = http.request(`http://${node.ip}:${PORT}/api/restart/local`, { method: 'POST', timeout: 60000, headers: { 'Content-Type': 'application/json' } }, (resp) => {
+          let body = '';
+          resp.on('data', d => body += d);
+          resp.on('end', () => {
+            try { resolve(JSON.parse(body)); } catch { resolve({ results: [] }); }
+          });
+        });
+        r.on('error', reject);
+        r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
+        r.end();
+      });
+      const restarted = (result.results || []).filter(s => s.status === 'restarted').map(s => s.service);
+      const skipped = (result.results || []).filter(s => s.status === 'skipped').map(s => s.service);
+      if (restarted.length) restartTask.log.push(`  Restarted: ${restarted.join(', ')}`);
+      if (skipped.length) restartTask.log.push(`  Skipped: ${skipped.join(', ')}`);
+    } catch (err) {
+      restartTask.log.push(`  Failed: ${err.message}`);
+    }
+  }
+
+  // Phase 2: Restart pg-monitor on remote nodes first
+  for (const node of nodes) {
+    const isLocal = node.ip === '127.0.0.1' || node.ip === os.hostname();
+    // Check if this is the local node
+    let localIps = [];
+    try {
+      const ifaces = os.networkInterfaces();
+      for (const iface of Object.values(ifaces)) {
+        for (const addr of iface) localIps.push(addr.address);
+      }
+    } catch {}
+    if (localIps.includes(node.ip)) continue; // restart local last
+    restartTask.log.push(`Restarting pg-monitor on ${node.name}...`);
+    try {
+      await new Promise((resolve, reject) => {
+        const r = http.request(`http://${node.ip}:${PORT}/api/restart/monitor`, { method: 'POST', timeout: 15000, headers: { 'Content-Type': 'application/json' } }, (resp) => {
+          let body = '';
+          resp.on('data', d => body += d);
+          resp.on('end', () => resolve(body));
+        });
+        r.on('error', reject);
+        r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
+        r.end();
+      });
+      restartTask.log.push(`  Done`);
+    } catch (err) {
+      restartTask.log.push(`  Failed: ${err.message}`);
+    }
+  }
+
+  // Phase 3: Mark done, then restart own pg-monitor
+  restartTask.log.push('Restarting local pg-monitor...');
+  restartTask.running = false;
+  restartTask.done = true;
+  setTimeout(() => {
+    spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
+  }, 1500);
+});
+
+// POST /api/restart/monitor — restart pg-monitor on this node (called remotely)
+app.post('/api/restart/monitor', (req, res) => {
+  res.json({ message: 'Restarting pg-monitor' });
+  setTimeout(() => {
+    spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
+  }, 500);
+});
+
+// GET /api/restart/status — restart task log
+app.get('/api/restart/status', (req, res) => {
+  const since = parseInt(req.query.since) || 0;
+  res.json({
+    running: restartTask.running,
+    done: restartTask.done,
+    log: restartTask.log.slice(since),
+    totalLines: restartTask.log.length
+  });
+});
+
 // Helper: run borg command and return stdout
 function runBorg(args, timeout = 15000) {
   return new Promise((resolve, reject) => {

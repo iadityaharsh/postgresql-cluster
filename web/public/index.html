@@ -1320,6 +1320,8 @@
       const [savingAuth, setSavingAuth] = useState(false);
       const [tunnelOpen, setTunnelOpen] = useState(() => localStorage.getItem('panel_tunnel') !== 'closed');
       const [hyperdriveOpen, setHyperdriveOpen] = useState(() => localStorage.getItem('panel_hyperdrive') !== 'closed');
+      const [confirmRestart, setConfirmRestart] = useState(false);
+      const [restarting, setRestarting] = useState(false);
 
       const togglePanel = (panel, open, setter) => {
         const next = !open;
@@ -1409,6 +1411,30 @@
       };
 
       const closeTasks = () => { setTaskViewer(null); fetchTunnel(); };
+
+      const restartCluster = async () => {
+        setConfirmRestart(false);
+        setRestarting(true);
+        setTaskViewer({ title: 'Restarting All Nodes', statusUrl: '/api/restart/status' });
+        try {
+          const resp = await fetch('/api/restart', { method: 'POST' });
+          if (!resp.ok) {
+            const d = await resp.json();
+            setToast({ message: d.error || 'Restart failed', type: 'error' });
+            setRestarting(false);
+          }
+        } catch {
+          setToast({ message: 'Failed to initiate restart', type: 'error' });
+          setRestarting(false);
+        }
+      };
+
+      const closeRestartTask = () => {
+        setTaskViewer(null);
+        setRestarting(false);
+        // pg-monitor is restarting — wait a moment then reload the page
+        setTimeout(() => window.location.reload(), 3000);
+      };
 
       const tunnelNodes = tunnel?.nodes || [];
       const tunnelActive = tunnelNodes.some(n => n.running);
@@ -1561,7 +1587,31 @@
             </div>
           </div>
 
-          {taskViewer && <TaskViewer title={taskViewer.title} statusUrl={taskViewer.statusUrl} onClose={closeTasks} />}
+          {/* Restart All Nodes */}
+          <div className="panel">
+            <div className="panel-header"><span>Restart Cluster</span></div>
+            <div className="panel-body">
+              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Restart all services (etcd, Patroni, vip-manager, cloudflared) on every node, then restart the monitoring dashboard. The page will reload automatically.
+              </div>
+              <button className="btn" style={{ border: '1px solid var(--err)', color: 'var(--err)', fontWeight: 600 }} onClick={() => setConfirmRestart(true)} disabled={restarting}>
+                {restarting ? 'Restarting...' : 'Restart All Nodes'}
+              </button>
+            </div>
+          </div>
+
+          {confirmRestart && (
+            <ConfirmModal
+              title="Restart All Nodes"
+              message="This will restart etcd, Patroni, vip-manager, and cloudflared on every node, then restart the dashboard. There will be brief downtime. Continue?"
+              confirmText="Restart"
+              confirmClass="danger"
+              onConfirm={restartCluster}
+              onCancel={() => setConfirmRestart(false)}
+            />
+          )}
+
+          {taskViewer && <TaskViewer title={taskViewer.title} statusUrl={taskViewer.statusUrl} onClose={restarting ? closeRestartTask : closeTasks} />}
           {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
       );
