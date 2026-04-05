@@ -929,6 +929,7 @@
       const [confirmDelete, setConfirmDelete] = useState(null);
       const [updateKey, setUpdateKey] = useState(null);
       const [updatePassword, setUpdatePassword] = useState('');
+      const [detailKey, setDetailKey] = useState(null);
       const [copiedId, setCopiedId] = useState(null);
 
       const fetchData = useCallback(async () => {
@@ -1092,6 +1093,7 @@
                         <td>
                           {cfg ? (
                             <div style={{ display: 'flex', gap: 4 }}>
+                              <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => setDetailKey(key)}>Details</button>
                               <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => { setUpdateKey(key); setUpdatePassword(''); }}>Edit</button>
                               <button className="btn" style={{ padding: '2px 8px', fontSize: 11, color: 'var(--err)' }} onClick={() => setConfirmDelete(key)}>Delete</button>
                             </div>
@@ -1110,62 +1112,54 @@
             </div>}
           </div>
 
-          {/* Connection cards for configured databases */}
-          {!collapsed && configured.length > 0 && (
-            <div className="panel">
-              <div className="panel-header"><span>Connection Details</span></div>
-              <div className="panel-body">
-                {configured.map(entry => {
-                  const cfg = entry.config;
-                  const key = `${cfg.database}-${cfg.username}`;
-                  const snippet = `{
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "${cfg.hyperdrive_id || 'YOUR_HYPERDRIVE_ID'}"
-    }
-  ]
-}`;
-                  return (
-                    <div key={key} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <span style={{ fontWeight: 600, color: 'var(--text-bright)', fontSize: 13 }}>{cfg.database}</span>
-                        <Badge type="ok" text="Connected" />
-                      </div>
-                      <table className="kv-table" style={{ marginBottom: 10 }}>
-                        <tbody>
-                          <tr><td>Hostname</td><td>{cfg.hostname}</td></tr>
-                          <tr><td>User</td><td>{cfg.username}</td></tr>
-                          <tr><td>Hyperdrive Name</td><td>{cfg.hyperdrive_name}</td></tr>
-                          <tr>
-                            <td>Hyperdrive ID</td>
-                            <td style={{ fontFamily: 'monospace', fontSize: 11 }}>
-                              {cfg.hyperdrive_id || 'N/A'}
-                              {cfg.hyperdrive_id && (
-                                <button className="btn" style={{ marginLeft: 8, padding: '1px 6px', fontSize: 10 }}
-                                  onClick={() => copyToClipboard(cfg.hyperdrive_id, key + '-id')}>
-                                  {copiedId === key + '-id' ? 'Copied!' : 'Copy'}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                          <tr><td>Created</td><td>{cfg.created ? new Date(cfg.created).toLocaleDateString() : 'N/A'}</td></tr>
-                        </tbody>
-                      </table>
-                      <div style={{ position: 'relative' }}>
-                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>wrangler.jsonc snippet:</div>
-                        <pre style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 4, padding: '8px 10px', fontSize: 11, color: 'var(--text)', overflow: 'auto', maxHeight: 120, margin: 0 }}>{snippet}</pre>
-                        <button className="btn" style={{ position: 'absolute', top: 0, right: 0, padding: '2px 8px', fontSize: 10 }}
-                          onClick={() => copyToClipboard(snippet, key + '-snippet')}>
-                          {copiedId === key + '-snippet' ? 'Copied!' : 'Copy'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* Connection Details modal */}
+          {detailKey && (() => {
+            const detailCfg = entries.find(e => e.config && `${e.config.database}-${e.config.username}` === detailKey)?.config;
+            if (!detailCfg) return null;
+            const snippet = `{\n  "hyperdrive": [\n    {\n      "binding": "HYPERDRIVE",\n      "id": "${detailCfg.hyperdrive_id || 'YOUR_HYPERDRIVE_ID'}"\n    }\n  ]\n}`;
+            return (
+              <div className="modal-overlay" onClick={() => setDetailKey(null)}>
+                <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0 }}>Connection Details — {detailCfg.database}</h3>
+                    <Badge type="ok" text="Connected" />
+                  </div>
+                  <table className="kv-table" style={{ marginTop: 14, marginBottom: 16 }}>
+                    <tbody>
+                      <tr><td>Hostname</td><td>{detailCfg.hostname}</td></tr>
+                      <tr><td>Database</td><td>{detailCfg.database}</td></tr>
+                      <tr><td>User</td><td>{detailCfg.username}</td></tr>
+                      <tr><td>Hyperdrive Name</td><td>{detailCfg.hyperdrive_name || '\u2014'}</td></tr>
+                      <tr>
+                        <td>Hyperdrive ID</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                          {detailCfg.hyperdrive_id || 'N/A'}
+                          {detailCfg.hyperdrive_id && (
+                            <button className="btn" style={{ marginLeft: 8, padding: '1px 6px', fontSize: 10 }}
+                              onClick={() => copyToClipboard(detailCfg.hyperdrive_id, detailKey + '-detail-id')}>
+                              {copiedId === detailKey + '-detail-id' ? 'Copied!' : 'Copy'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      <tr><td>Created</td><td>{detailCfg.created ? new Date(detailCfg.created).toLocaleDateString() : 'N/A'}</td></tr>
+                    </tbody>
+                  </table>
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>wrangler.jsonc snippet:</div>
+                    <pre style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 4, padding: '8px 10px', fontSize: 11, color: 'var(--text)', overflow: 'auto', maxHeight: 120, margin: 0 }}>{snippet}</pre>
+                    <button className="btn" style={{ position: 'absolute', top: 0, right: 0, padding: '2px 8px', fontSize: 10 }}
+                      onClick={() => copyToClipboard(snippet, detailKey + '-detail-snippet')}>
+                      {copiedId === detailKey + '-detail-snippet' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <div className="modal-actions" style={{ marginTop: 16 }}>
+                    <button className="btn" onClick={() => setDetailKey(null)}>Close</button>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Setup form modal */}
           {showForm && (
