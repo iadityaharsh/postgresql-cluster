@@ -274,6 +274,62 @@ Cloudflare Pages uses `functions/` directory, but Workers use a single entry poi
 
 ---
 
+## Domain-Based Database Access (Dashboard)
+
+The cluster dashboard should allow users to configure Hyperdrive and per-database domain access directly from the web UI — no CLI required.
+
+### Proposed feature: Hyperdrive tab in the dashboard
+
+Add a **Hyperdrive** section (or tab) under Remote Access in the dashboard that lets users:
+
+1. **List databases** — Show all databases on the cluster with their current Hyperdrive status (connected / not configured)
+2. **Assign a domain per database** — Each database gets its own public hostname through the tunnel (e.g. `app-db.example.com`, `analytics-db.example.com`). The dashboard should:
+   - Accept the desired subdomain/hostname
+   - Create or update the Cloudflare Tunnel public hostname route for that database (service: `tcp://VIP:5432`)
+   - Create a Cloudflare Access application scoped to that hostname with a Service Token policy
+3. **Create Hyperdrive config** — For each domain-mapped database, provide a form to:
+   - Select the database from the cluster
+   - Create a dedicated DB user (or select an existing one) with appropriate grants
+   - Input or generate the Access Client ID and Secret
+   - Run `wrangler hyperdrive create` via the backend and display the resulting Hyperdrive ID
+4. **Show connection details** — After setup, display a card per database with:
+   - Hostname, database name, user
+   - Hyperdrive ID (copy-to-clipboard)
+   - Ready-to-paste `wrangler.jsonc` snippet
+   - Connection status indicator (healthy / unreachable)
+5. **Manage configs** — Allow updating passwords, rotating Access tokens, and deleting Hyperdrive configs from the UI
+
+### Implementation notes
+
+- The backend should call `wrangler hyperdrive create/update/delete` via `child_process.execFile`, similar to how `setup-tunnel.sh` is invoked from `server.js` today
+- Use the existing `setup-hyperdrive.sh` script with `--skip-db-setup` flag when the user creates the DB user through the dashboard's SQL interface instead
+- Wrangler must be authenticated on the server — either via `wrangler login` (interactive, one-time) or a `CLOUDFLARE_API_TOKEN` environment variable (recommended for headless servers)
+- Store Hyperdrive configs in `hyperdrive.conf` (one per database) or a JSON file so the dashboard can display them on reload
+- The Cloudflare API can be called directly for Access application and tunnel route management instead of relying on the Wrangler CLI — see [Cloudflare API docs](https://developers.cloudflare.com/api/)
+- Each database domain should have its own Access policy so tokens can be rotated independently
+
+### Example UI flow
+
+```
+Dashboard > Remote Access > Hyperdrive
+
+┌─────────────────────────────────────────────────────────┐
+│ Databases                                               │
+├──────────────┬──────────────────────┬───────────┬───────┤
+│ Database     │ Domain               │ Hyperdrive│ Status│
+├──────────────┼──────────────────────┼───────────┼───────┤
+│ toolkit_db   │ db-toolkit.example.com│ fcf821... │  ● OK │
+│ analytics    │ —                    │ —         │  Setup│
+│ postgres     │ —                    │ —         │  Setup│
+└──────────────┴──────────────────────┴───────────┴───────┘
+
+[+ Add Hyperdrive]
+```
+
+Clicking **Setup** or **Add Hyperdrive** opens a form to assign a domain, create the user, and provision the Hyperdrive config.
+
+---
+
 ## Script Reference
 
 ```
