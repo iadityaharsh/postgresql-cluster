@@ -1027,24 +1027,36 @@ app.post('/api/storage/apply', (req, res) => {
 // Remote Access — Cloudflare Tunnel status & setup
 // ============================================================
 
-// GET /api/tunnel — check cloudflared and tunnel status
-app.get('/api/tunnel', (req, res) => {
+// GET /api/tunnel/local — this node's cloudflared status
+app.get('/api/tunnel/local', (req, res) => {
   const result = { installed: false, version: null, running: false };
-
-  // Check if cloudflared is installed
   try {
     const ver = require('child_process').execSync('cloudflared --version 2>&1').toString().trim();
     result.installed = true;
     result.version = ver.match(/cloudflared version ([\d.]+)/)?.[1] || ver;
   } catch {}
-
-  // Check if cloudflared service is running
   try {
     const status = require('child_process').execSync('systemctl is-active cloudflared 2>/dev/null').toString().trim();
     result.running = status === 'active';
   } catch {}
-
   res.json(result);
+});
+
+// GET /api/tunnel — cloudflared status from all nodes
+app.get('/api/tunnel', async (req, res) => {
+  const results = await Promise.all(
+    nodes.map(async node => {
+      const data = await fetchJSON(`http://${node.ip}:${PORT}/api/tunnel/local`);
+      return {
+        name: node.name,
+        ip: node.ip,
+        installed: data?.installed || false,
+        version: data?.version || null,
+        running: data?.running || false
+      };
+    })
+  );
+  res.json({ nodes: results });
 });
 
 // POST /api/tunnel/setup — install tunnel connector on ALL nodes using token

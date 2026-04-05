@@ -1377,7 +1377,8 @@
 
       const closeTasks = () => { setTaskViewer(null); fetchTunnel(); };
 
-      const tunnelActive = tunnel?.running;
+      const tunnelNodes = tunnel?.nodes || [];
+      const tunnelActive = tunnelNodes.some(n => n.running);
 
       return (
         <div>
@@ -1396,19 +1397,25 @@
                 All cluster nodes are configured as tunnel connectors for HA.
               </div>
 
-              {/* Status */}
-              {tunnel && (
+              {/* Per-node status */}
+              {tunnelNodes.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <table className="kv-table">
+                  <table className="data-table" style={{ borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+                    <thead>
+                      <tr>
+                        <th>Node</th>
+                        <th>cloudflared</th>
+                        <th>Service</th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      <tr>
-                        <td>cloudflared</td>
-                        <td>{tunnel.installed ? <><Badge type="ok" text="Installed" /> <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>v{tunnel.version}</span></> : <Badge type="err" text="Not Installed" />}</td>
-                      </tr>
-                      <tr>
-                        <td>Tunnel Service</td>
-                        <td>{tunnelActive ? <Badge type="ok" text="Running" /> : tunnel.installed ? <Badge type="warn" text="Stopped" /> : <Badge type="err" text="N/A" />}</td>
-                      </tr>
+                      {tunnelNodes.map(n => (
+                        <tr key={n.name}>
+                          <td style={{ fontWeight: 500 }}>{n.name}</td>
+                          <td>{n.installed ? <><Badge type="ok" text="Installed" /> <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>v{n.version}</span></> : <Badge type="err" text="Not Installed" />}</td>
+                          <td>{n.running ? <Badge type="ok" text="Running" /> : n.installed ? <Badge type="warn" text="Stopped" /> : <Badge type="err" text="N/A" />}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
