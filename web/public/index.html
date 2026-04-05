@@ -154,6 +154,12 @@
     .kv-table tr td:last-child { color: var(--text-bright); }
     .kv-table tr td { padding: 5px 12px; border-bottom: 1px solid var(--border-subtle); }
 
+    /* === Data tables === */
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table th { text-align: left; padding: 6px 12px; font-size: 11px; font-weight: 600; color: var(--text-muted); background: var(--th-bg); border-bottom: 1px solid var(--border); }
+    .data-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); font-size: 12px; }
+    .data-table tr:hover td { background: var(--row-hover); }
+
     /* === Badges === */
     .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
     .badge.ok { background: rgba(80,200,120,0.15); color: var(--ok); }
@@ -740,6 +746,344 @@
       );
     }
 
+    // ========== Hyperdrive Section ==========
+    function HyperdriveSection() {
+      const [data, setData] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [toast, setToast] = useState(null);
+      const [taskViewer, setTaskViewer] = useState(null);
+      const [showForm, setShowForm] = useState(false);
+      const [formDb, setFormDb] = useState('');
+      const [form, setForm] = useState({ username: '', password: '', hostname: '', hyperdrive_name: '', access_client_id: '', access_client_secret: '' });
+      const [creatingUser, setCreatingUser] = useState(false);
+      const [confirmDelete, setConfirmDelete] = useState(null);
+      const [updateKey, setUpdateKey] = useState(null);
+      const [updatePassword, setUpdatePassword] = useState('');
+      const [copiedId, setCopiedId] = useState(null);
+
+      const fetchData = useCallback(async () => {
+        try {
+          const d = await fetch('/api/hyperdrive').then(r => r.json());
+          setData(d);
+        } catch {}
+        setLoading(false);
+      }, []);
+
+      useEffect(() => { fetchData(); }, [fetchData]);
+
+      const generatePassword = () => {
+        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        let pw = '';
+        for (let i = 0; i < 32; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+        setForm(f => ({ ...f, password: pw }));
+      };
+
+      const openSetup = (db) => {
+        setFormDb(db);
+        setForm({ username: `cf_${db}`, password: '', hostname: '', hyperdrive_name: '', access_client_id: '', access_client_secret: '' });
+        generatePassword();
+        setShowForm(true);
+      };
+
+      const createUser = async () => {
+        if (!form.username || !form.password) return setToast({ message: 'Username and password required', type: 'error' });
+        setCreatingUser(true);
+        try {
+          const resp = await fetch('/api/hyperdrive/create-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ database: formDb, username: form.username, password: form.password })
+          });
+          const d = await resp.json();
+          if (resp.ok) setToast({ message: d.message, type: 'ok' });
+          else setToast({ message: d.error, type: 'error' });
+        } catch { setToast({ message: 'Failed to create user', type: 'error' }); }
+        setCreatingUser(false);
+      };
+
+      const createHyperdrive = async () => {
+        if (!form.hostname || !form.access_client_id || !form.access_client_secret) {
+          return setToast({ message: 'Hostname, Access Client ID, and Secret are required', type: 'error' });
+        }
+        if (!form.username || !form.password) {
+          return setToast({ message: 'Create the DB user first', type: 'error' });
+        }
+        try {
+          const resp = await fetch('/api/hyperdrive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              database: formDb,
+              username: form.username,
+              password: form.password,
+              hostname: form.hostname,
+              hyperdrive_name: form.hyperdrive_name || undefined,
+              access_client_id: form.access_client_id,
+              access_client_secret: form.access_client_secret
+            })
+          });
+          const d = await resp.json();
+          if (resp.ok) {
+            setTaskViewer({ title: `Hyperdrive — ${formDb}`, statusUrl: '/api/hyperdrive/status' });
+            setShowForm(false);
+          } else {
+            setToast({ message: d.error, type: 'error' });
+          }
+        } catch { setToast({ message: 'Failed to create Hyperdrive', type: 'error' }); }
+      };
+
+      const deleteConfig = async (key) => {
+        setConfirmDelete(null);
+        try {
+          const resp = await fetch(`/api/hyperdrive/${encodeURIComponent(key)}`, { method: 'DELETE' });
+          const d = await resp.json();
+          setToast({ message: d.message || 'Deleted', type: 'ok' });
+          fetchData();
+        } catch { setToast({ message: 'Delete failed', type: 'error' }); }
+      };
+
+      const updateConfig = async (key) => {
+        if (!updatePassword) return;
+        try {
+          const resp = await fetch(`/api/hyperdrive/${encodeURIComponent(key)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: updatePassword })
+          });
+          const d = await resp.json();
+          if (resp.ok) { setToast({ message: 'Password updated', type: 'ok' }); setUpdateKey(null); setUpdatePassword(''); }
+          else setToast({ message: d.error, type: 'error' });
+        } catch { setToast({ message: 'Update failed', type: 'error' }); }
+      };
+
+      const copyToClipboard = (text, id) => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopiedId(id);
+          setTimeout(() => setCopiedId(null), 2000);
+        });
+      };
+
+      const closeTasks = () => { setTaskViewer(null); fetchData(); };
+
+      if (loading) return React.createElement('div', { className: 'panel' },
+        React.createElement('div', { className: 'panel-header' }, React.createElement('span', null, 'Hyperdrive')),
+        React.createElement('div', { className: 'panel-body', style: { color: 'var(--text-muted)' } }, 'Loading...')
+      );
+
+      const entries = data?.entries || [];
+      const configured = entries.filter(e => e.configured);
+
+      return (
+        <div>
+          <div className="panel">
+            <div className="panel-header">
+              <span>Hyperdrive</span>
+              <a href="https://github.com/iadityaharsh/postgresql-cluster/blob/main/docs/hyperdrive.md" target="_blank" rel="noopener noreferrer"
+                 className="btn" style={{ padding: '3px 10px', fontSize: 11, textDecoration: 'none' }}>
+                View Docs
+              </a>
+            </div>
+            <div className="panel-body">
+              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Connect Cloudflare Workers to your databases via Hyperdrive — edge connection pooling, query caching, and regional routing.
+                {!data?.wrangler_installed && <span style={{ color: 'var(--warn)', display: 'block', marginTop: 4 }}>Wrangler CLI not detected. Install with: npm install -g wrangler</span>}
+              </div>
+
+              {/* Database table */}
+              <table className="data-table" style={{ marginBottom: 16 }}>
+                <thead>
+                  <tr>
+                    <th>Database</th>
+                    <th>Domain</th>
+                    <th>Hyperdrive</th>
+                    <th>Status</th>
+                    <th style={{ width: 80 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map(entry => {
+                    const cfg = entry.config;
+                    const key = cfg ? `${cfg.database}-${cfg.username}` : null;
+                    return (
+                      <tr key={entry.database}>
+                        <td style={{ fontWeight: 500 }}>{entry.database}{entry.missing && <span style={{ color: 'var(--warn)', fontSize: 10, marginLeft: 6 }}>dropped?</span>}</td>
+                        <td style={{ fontSize: 12, color: cfg?.hostname ? 'var(--text)' : 'var(--text-dim)' }}>{cfg?.hostname || '\u2014'}</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 11, color: cfg?.hyperdrive_id ? 'var(--text)' : 'var(--text-dim)' }}>
+                          {cfg?.hyperdrive_id ? (
+                            <span style={{ cursor: 'pointer' }} title="Click to copy" onClick={() => copyToClipboard(cfg.hyperdrive_id, cfg.hyperdrive_id)}>
+                              {copiedId === cfg.hyperdrive_id ? 'Copied!' : cfg.hyperdrive_id.slice(0, 12) + '...'}
+                            </span>
+                          ) : '\u2014'}
+                        </td>
+                        <td>{cfg ? <Badge type="ok" text="Connected" /> : <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>Not configured</span>}</td>
+                        <td>
+                          {cfg ? (
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => { setUpdateKey(key); setUpdatePassword(''); }}>Update</button>
+                              <button className="btn" style={{ padding: '2px 8px', fontSize: 11, color: 'var(--err)' }} onClick={() => setConfirmDelete(key)}>Delete</button>
+                            </div>
+                          ) : (
+                            <button className="btn primary" style={{ padding: '2px 10px', fontSize: 11 }} onClick={() => openSetup(entry.database)}>Setup</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {entries.length === 0 && (
+                    <tr><td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 20 }}>No databases found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Connection cards for configured databases */}
+          {configured.length > 0 && (
+            <div className="panel">
+              <div className="panel-header"><span>Connection Details</span></div>
+              <div className="panel-body">
+                {configured.map(entry => {
+                  const cfg = entry.config;
+                  const key = `${cfg.database}-${cfg.username}`;
+                  const snippet = `{
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "${cfg.hyperdrive_id || 'YOUR_HYPERDRIVE_ID'}"
+    }
+  ]
+}`;
+                  return (
+                    <div key={key} style={{ marginBottom: 16, padding: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-bright)', fontSize: 13 }}>{cfg.database}</span>
+                        <Badge type="ok" text="Connected" />
+                      </div>
+                      <table className="kv-table" style={{ marginBottom: 10 }}>
+                        <tbody>
+                          <tr><td>Hostname</td><td>{cfg.hostname}</td></tr>
+                          <tr><td>User</td><td>{cfg.username}</td></tr>
+                          <tr><td>Hyperdrive Name</td><td>{cfg.hyperdrive_name}</td></tr>
+                          <tr>
+                            <td>Hyperdrive ID</td>
+                            <td style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                              {cfg.hyperdrive_id || 'N/A'}
+                              {cfg.hyperdrive_id && (
+                                <button className="btn" style={{ marginLeft: 8, padding: '1px 6px', fontSize: 10 }}
+                                  onClick={() => copyToClipboard(cfg.hyperdrive_id, key + '-id')}>
+                                  {copiedId === key + '-id' ? 'Copied!' : 'Copy'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          <tr><td>Created</td><td>{cfg.created ? new Date(cfg.created).toLocaleDateString() : 'N/A'}</td></tr>
+                        </tbody>
+                      </table>
+                      <div style={{ position: 'relative' }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>wrangler.jsonc snippet:</div>
+                        <pre style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 4, padding: '8px 10px', fontSize: 11, color: 'var(--text)', overflow: 'auto', maxHeight: 120, margin: 0 }}>{snippet}</pre>
+                        <button className="btn" style={{ position: 'absolute', top: 0, right: 0, padding: '2px 8px', fontSize: 10 }}
+                          onClick={() => copyToClipboard(snippet, key + '-snippet')}>
+                          {copiedId === key + '-snippet' ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Setup form modal */}
+          {showForm && (
+            <div className="modal-overlay" onClick={() => setShowForm(false)}>
+              <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+                <h3>Setup Hyperdrive — {formDb}</h3>
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>1. Database User</div>
+                  <div className="form-group" style={{ marginBottom: 6 }}>
+                    <label>Username</label>
+                    <input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder="cf_mydb" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 6 }}>
+                    <label>Password</label>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input type="text" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} style={{ flex: 1, fontFamily: 'monospace', fontSize: 11 }} />
+                      <button className="btn" style={{ padding: '4px 10px', fontSize: 11 }} onClick={generatePassword}>Generate</button>
+                    </div>
+                  </div>
+                  <button className="btn primary" style={{ fontSize: 12, marginBottom: 16 }} onClick={createUser} disabled={creatingUser}>
+                    {creatingUser ? 'Creating...' : 'Create DB User'}
+                  </button>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>2. Hyperdrive Config</div>
+                  <div className="form-group" style={{ marginBottom: 6 }}>
+                    <label>Tunnel Hostname</label>
+                    <input type="text" value={form.hostname} onChange={e => setForm(f => ({ ...f, hostname: e.target.value }))} placeholder="db-cluster.example.com" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 6 }}>
+                    <label>Hyperdrive Name (optional)</label>
+                    <input type="text" value={form.hyperdrive_name} onChange={e => setForm(f => ({ ...f, hyperdrive_name: e.target.value }))} placeholder={`${formDb}-hyperdrive`} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 6 }}>
+                    <label>Access Client ID</label>
+                    <input type="text" value={form.access_client_id} onChange={e => setForm(f => ({ ...f, access_client_id: e.target.value }))} placeholder="xxxxxxxx.access" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 6 }}>
+                    <label>Access Client Secret</label>
+                    <input type="password" value={form.access_client_secret} onChange={e => setForm(f => ({ ...f, access_client_secret: e.target.value }))} />
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
+                    Create a Service Token at <strong>Zero Trust &gt; Access &gt; Service Auth</strong>. The tunnel hostname must point to <strong>tcp://VIP:5432</strong>.
+                  </p>
+                </div>
+
+                <div className="modal-actions">
+                  <button className="btn" onClick={() => setShowForm(false)}>Cancel</button>
+                  <button className="btn primary" onClick={createHyperdrive}>Create Hyperdrive</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Update password modal */}
+          {updateKey && (
+            <div className="modal-overlay" onClick={() => setUpdateKey(null)}>
+              <div className="modal" onClick={e => e.stopPropagation()}>
+                <h3>Update Password</h3>
+                <p style={{ margin: '8px 0', fontSize: 12, color: 'var(--text-muted)' }}>Enter a new origin password for this Hyperdrive config. This updates the password on Cloudflare's side.</p>
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>New Password</label>
+                  <input type="text" value={updatePassword} onChange={e => setUpdatePassword(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} />
+                </div>
+                <div className="modal-actions">
+                  <button className="btn" onClick={() => setUpdateKey(null)}>Cancel</button>
+                  <button className="btn primary" onClick={() => updateConfig(updateKey)}>Update</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {confirmDelete && (
+            <ConfirmModal
+              title="Delete Hyperdrive Config"
+              message="This will delete the Hyperdrive config from Cloudflare and remove the local configuration. This cannot be undone."
+              confirmText="Delete"
+              confirmClass="danger"
+              onConfirm={() => deleteConfig(confirmDelete)}
+              onCancel={() => setConfirmDelete(null)}
+            />
+          )}
+
+          {taskViewer && <TaskViewer title={taskViewer.title} statusUrl={taskViewer.statusUrl} onClose={closeTasks} />}
+          {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        </div>
+      );
+    }
+
     // ========== Settings Tab ==========
     const THEMES = [
       { id: 'dark', name: 'Dark', colors: ['#1a1a2e', '#1e1e32', '#2d2d44', '#f97316'] },
@@ -859,6 +1203,9 @@
               </div>
             </div>
           </div>
+
+          {/* Hyperdrive */}
+          <HyperdriveSection />
 
           {/* Theme */}
           <div className="panel">

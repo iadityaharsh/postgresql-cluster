@@ -1,2 +1,4 @@
 cluster.conf
+hyperdrive.conf
+hyperdrive.json
 *.zip

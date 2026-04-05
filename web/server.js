@@ -1164,6 +1164,297 @@ app.get('/api/tunnel/status', (req, res) => {
   });
 });
 
+// ============================================================
+// Hyperdrive — manage Cloudflare Hyperdrive configs per database
+// ============================================================
+
+const HYPERDRIVE_JSON = (() => {
+  const candidates = [
+    path.resolve(__dirname, 'hyperdrive.json'),
+    path.resolve(__dirname, '..', 'hyperdrive.json')
+  ];
+  return candidates.find(p => fs.existsSync(p)) || candidates[0];
+})();
+
+function readHyperdriveConfigs() {
+  try {
+    if (fs.existsSync(HYPERDRIVE_JSON)) return JSON.parse(fs.readFileSync(HYPERDRIVE_JSON, 'utf8'));
+  } catch {}
+  return {};
+}
+
+function writeHyperdriveConfigs(configs) {
+  fs.writeFileSync(HYPERDRIVE_JSON, JSON.stringify(configs, null, 2));
+}
+
+// GET /api/hyperdrive — list all configs + databases with status
+app.get('/api/hyperdrive', async (req, res) => {
+  const configs = readHyperdriveConfigs();
+
+  // Get database list from PostgreSQL
+  let databases = [];
+  const pool = new Pool({
+    host: VIP || nodes[0].ip,
+    port: parseInt(PG_PORT),
+    user: 'postgres',
+    password: PG_PASS,
+    database: 'postgres',
+    connectionTimeoutMillis: 3000
+  });
+  try {
+    const result = await pool.query(`
+      SELECT datname FROM pg_database
+      WHERE datname NOT IN ('template0', 'template1')
+      ORDER BY datname
+    `);
+    databases = result.rows.map(r => r.datname);
+  } catch {}
+  await pool.end().catch(() => {});
+
+  // Check wrangler availability
+  let wranglerInstalled = false;
+  try {
+    require('child_process').execSync('npx wrangler --version 2>/dev/null', { timeout: 10000 });
+    wranglerInstalled = true;
+  } catch {}
+
+  // Merge databases with configs
+  const entries = databases.map(db => {
+    const cfg = Object.values(configs).find(c => c.database === db);
+    return {
+      database: db,
+      configured: !!cfg,
+      config: cfg || null
+    };
+  });
+
+  // Include configs for databases that might have been dropped
+  Object.values(configs).forEach(cfg => {
+    if (!databases.includes(cfg.database)) {
+      entries.push({ database: cfg.database, configured: true, config: cfg, missing: true });
+    }
+  });
+
+  res.json({ entries, wrangler_installed: wranglerInstalled });
+});
+
+// POST /api/hyperdrive/create-user — create a dedicated DB user for Hyperdrive
+app.post('/api/hyperdrive/create-user', async (req, res) => {
+  const { database, username, password } = req.body;
+  if (!database || !username || !password) {
+    return res.status(400).json({ error: 'database, username, and password are required' });
+  }
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(username)) {
+    return res.status(400).json({ error: 'Invalid username format' });
+  }
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(database)) {
+    return res.status(400).json({ error: 'Invalid database name format' });
+  }
+
+  const pool = new Pool({
+    host: VIP || nodes[0].ip,
+    port: parseInt(PG_PORT),
+    user: 'postgres',
+    password: PG_PASS,
+    database: 'postgres',
+    connectionTimeoutMillis: 5000
+  });
+
+  try {
+    // Check if user exists
+    const exists = await pool.query(`SELECT 1 FROM pg_roles WHERE rolname=$1`, [username]);
+    if (exists.rows.length > 0) {
+      // Update password
+      await pool.query(`ALTER USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}'`);
+    } else {
+      await pool.query(`CREATE USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}'`);
+    }
+
+    // Grant on database
+    await pool.query(`GRANT ALL PRIVILEGES ON DATABASE ${database} TO ${username}`);
+
+    // Grant on tables in the target database
+    const dbPool = new Pool({
+      host: VIP || nodes[0].ip,
+      port: parseInt(PG_PORT),
+      user: 'postgres',
+      password: PG_PASS,
+      database: database,
+      connectionTimeoutMillis: 5000
+    });
+    try {
+      await dbPool.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${username}`);
+      await dbPool.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${username}`);
+    } finally {
+      await dbPool.end().catch(() => {});
+    }
+
+    res.json({ message: `User ${username} configured with access to ${database}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    await pool.end().catch(() => {});
+  }
+});
+
+// POST /api/hyperdrive — create a new Hyperdrive config via wrangler
+let hyperdriveTask = { running: false, log: [], exitCode: null, startTime: null };
+
+app.post('/api/hyperdrive', (req, res) => {
+  const { database, username, password, hostname, hyperdrive_name, access_client_id, access_client_secret } = req.body;
+
+  if (!database || !username || !password || !hostname || !access_client_id || !access_client_secret) {
+    return res.status(400).json({ error: 'All fields are required: database, username, password, hostname, access_client_id, access_client_secret' });
+  }
+  if (hyperdriveTask.running) return res.status(409).json({ error: 'A Hyperdrive setup is already running' });
+
+  const hdName = hyperdrive_name || `${CLUSTER_NAME}-${database}`;
+
+  hyperdriveTask = { running: true, log: [], exitCode: null, startTime: new Date().toISOString() };
+  hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] Creating Hyperdrive config "${hdName}"...`);
+  hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] Host: ${hostname}, DB: ${database}, User: ${username}`);
+
+  res.json({ status: 'started' });
+
+  const cmd = `npx wrangler hyperdrive create "${hdName}" \
+    --origin-host="${hostname}" \
+    --origin-user="${username}" \
+    --origin-password="${password.replace(/"/g, '\\"')}" \
+    --database="${database}" \
+    --access-client-id="${access_client_id}" \
+    --access-client-secret="${access_client_secret}" 2>&1`;
+
+  const child = spawn('bash', ['-c', cmd], {
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || '' }
+  });
+
+  let output = '';
+  child.stdout.on('data', (data) => {
+    output += data.toString();
+    data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] ${line}`);
+    });
+  });
+  child.stderr.on('data', (data) => {
+    output += data.toString();
+    data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] ${line}`);
+    });
+  });
+
+  child.on('close', (code) => {
+    if (code === 0) {
+      // Extract Hyperdrive ID from output
+      const idMatch = output.match(/([0-9a-f]{32})/i) || output.match(/id:\s*(\S+)/i);
+      const hyperdriveId = idMatch ? idMatch[1] : null;
+
+      // Save to configs
+      const configs = readHyperdriveConfigs();
+      const configKey = `${database}-${username}`;
+      configs[configKey] = {
+        hyperdrive_id: hyperdriveId,
+        hyperdrive_name: hdName,
+        database,
+        username,
+        hostname,
+        access_client_id,
+        created: new Date().toISOString()
+      };
+      writeHyperdriveConfigs(configs);
+
+      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] Hyperdrive ID: ${hyperdriveId || 'see output above'}`);
+      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] TASK OK — config saved`);
+    } else {
+      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] TASK ERROR (exit code ${code})`);
+    }
+    hyperdriveTask.exitCode = code;
+    hyperdriveTask.running = false;
+  });
+
+  child.on('error', (err) => {
+    hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] ERROR: ${err.message}`);
+    hyperdriveTask.exitCode = 1;
+    hyperdriveTask.running = false;
+  });
+});
+
+// GET /api/hyperdrive/status — task log for hyperdrive create
+app.get('/api/hyperdrive/status', (req, res) => {
+  const since = parseInt(req.query.since) || 0;
+  res.json({
+    running: hyperdriveTask.running,
+    exitCode: hyperdriveTask.exitCode,
+    startTime: hyperdriveTask.startTime,
+    log: hyperdriveTask.log.slice(since),
+    totalLines: hyperdriveTask.log.length
+  });
+});
+
+// PUT /api/hyperdrive/:key — update a Hyperdrive config (e.g. rotate password)
+app.put('/api/hyperdrive/:key', (req, res) => {
+  const configs = readHyperdriveConfigs();
+  const cfg = configs[req.params.key];
+  if (!cfg) return res.status(404).json({ error: 'Config not found' });
+
+  const { password } = req.body;
+  if (!password || !cfg.hyperdrive_id) {
+    return res.status(400).json({ error: 'password and existing hyperdrive_id required' });
+  }
+
+  const cmd = `npx wrangler hyperdrive update "${cfg.hyperdrive_id}" --origin-password="${password.replace(/"/g, '\\"')}" 2>&1`;
+  const child = spawn('bash', ['-c', cmd], {
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || '' }
+  });
+
+  let output = '';
+  child.stdout.on('data', d => output += d);
+  child.stderr.on('data', d => output += d);
+  child.on('close', (code) => {
+    if (code === 0) {
+      configs[req.params.key].updated = new Date().toISOString();
+      writeHyperdriveConfigs(configs);
+      res.json({ message: 'Password updated', output: output.trim() });
+    } else {
+      res.status(500).json({ error: output.trim() || 'wrangler update failed' });
+    }
+  });
+  child.on('error', (err) => res.status(500).json({ error: err.message }));
+});
+
+// DELETE /api/hyperdrive/:key — delete a Hyperdrive config
+app.delete('/api/hyperdrive/:key', (req, res) => {
+  const configs = readHyperdriveConfigs();
+  const cfg = configs[req.params.key];
+  if (!cfg) return res.status(404).json({ error: 'Config not found' });
+
+  if (!cfg.hyperdrive_id) {
+    // No remote config to delete, just remove local
+    delete configs[req.params.key];
+    writeHyperdriveConfigs(configs);
+    return res.json({ message: 'Local config removed' });
+  }
+
+  const cmd = `npx wrangler hyperdrive delete "${cfg.hyperdrive_id}" 2>&1`;
+  const child = spawn('bash', ['-c', cmd], {
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || '' }
+  });
+
+  let output = '';
+  child.stdout.on('data', d => output += d);
+  child.stderr.on('data', d => output += d);
+  child.on('close', (code) => {
+    // Remove from local config regardless — if remote delete fails, user can recreate
+    delete configs[req.params.key];
+    writeHyperdriveConfigs(configs);
+    if (code === 0) {
+      res.json({ message: `Hyperdrive ${cfg.hyperdrive_name} deleted` });
+    } else {
+      res.json({ message: 'Local config removed, but wrangler delete may have failed', warning: output.trim() });
+    }
+  });
+  child.on('error', (err) => res.status(500).json({ error: err.message }));
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Cluster monitor running at http://0.0.0.0:${PORT}`);
 });
