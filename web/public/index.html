@@ -1569,30 +1569,23 @@
             </div>
           </div>
 
-          {/* Config Backup */}
-          <div className="panel">
-            <div className="panel-header"><span>Configuration Backup</span></div>
-            <div className="panel-body">
-              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)' }}>
-                Download a copy of the cluster configuration. Sensitive fields (passwords) are redacted in the export.
+          {/* Config Backup + Restart — side by side */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Configuration Backup</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Download cluster configuration. Sensitive fields are redacted.
               </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button className="btn primary" onClick={exportConfig}>
-                  Export cluster.conf
-                </button>
-                <button className="btn" onClick={exportPatroniConfig}>
-                  Export Patroni Config
-                </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn primary" onClick={exportConfig}>Export cluster.conf</button>
+                <button className="btn" onClick={exportPatroniConfig}>Export Patroni Config</button>
               </div>
             </div>
-          </div>
-
-          {/* Restart All Nodes */}
-          <div className="panel">
-            <div className="panel-header"><span>Restart Cluster</span></div>
-            <div className="panel-body">
-              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Restart all services (etcd, Patroni, vip-manager, cloudflared) on every node, then restart the monitoring dashboard. The page will reload automatically.
+            <div style={{ width: 1, background: 'var(--border-subtle)', alignSelf: 'stretch' }} />
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Restart Cluster</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+                Restart all services on every node. The page will reload automatically.
               </div>
               <button className="btn" style={{ border: '1px solid var(--err)', color: 'var(--err)', fontWeight: 600 }} onClick={() => setConfirmRestart(true)} disabled={restarting}>
                 {restarting ? 'Restarting...' : 'Restart All Nodes'}
