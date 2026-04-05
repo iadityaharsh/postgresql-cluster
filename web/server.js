@@ -1322,6 +1322,18 @@ app.post('/api/hyperdrive/cloudflare-auth', (req, res) => {
   }
 });
 
+// DELETE /api/hyperdrive/cloudflare-auth — clear Cloudflare API credentials
+app.delete('/api/hyperdrive/cloudflare-auth', (req, res) => {
+  try {
+    updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: '', CLOUDFLARE_API_TOKEN: '' });
+    delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    res.json({ message: 'Credentials cleared' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/hyperdrive/create-user — create a dedicated DB user for Hyperdrive
 app.post('/api/hyperdrive/create-user', async (req, res) => {
   const { database, username, password } = req.body;

@@ -877,10 +877,19 @@
             body: JSON.stringify(cfAuth)
           });
           const d = await resp.json();
-          if (resp.ok) { setToast({ message: 'Credentials saved — reloading...', type: 'ok' }); setTimeout(fetchData, 1000); }
+          if (resp.ok) { setToast({ message: 'Credentials saved', type: 'ok' }); setTimeout(fetchData, 1000); }
           else setToast({ message: d.error, type: 'error' });
         } catch { setToast({ message: 'Failed to save credentials', type: 'error' }); }
         setSavingAuth(false);
+      };
+
+      const resetCfAuth = async () => {
+        try {
+          const resp = await fetch('/api/hyperdrive/cloudflare-auth', { method: 'DELETE' });
+          const d = await resp.json();
+          if (resp.ok) { setToast({ message: 'Credentials cleared', type: 'ok' }); setCfAuth({ account_id: '', api_token: '' }); setTimeout(fetchData, 500); }
+          else setToast({ message: d.error, type: 'error' });
+        } catch { setToast({ message: 'Failed to reset credentials', type: 'error' }); }
       };
 
       if (loading) return React.createElement('div', { className: 'panel' },
@@ -907,7 +916,7 @@
                 {!data?.wrangler_installed && <span style={{ color: 'var(--warn)', display: 'block', marginTop: 4 }}>Wrangler CLI not detected. Install with: npm install -g wrangler</span>}
               </div>
 
-              {/* Cloudflare API credentials — shown when not configured */}
+              {/* Cloudflare API credentials */}
               {data && !data.cf_api_available && (
                 <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Cloudflare API Credentials</div>
@@ -924,9 +933,15 @@
                       <input type="password" placeholder="Cloudflare API token" value={cfAuth.api_token} onChange={e => setCfAuth(a => ({ ...a, api_token: e.target.value }))} />
                     </div>
                     <button className="btn primary" style={{ height: 32, fontSize: 12 }} onClick={saveCfAuth} disabled={savingAuth}>
-                      {savingAuth ? 'Saving...' : 'Save & Detect'}
+                      {savingAuth ? 'Saving...' : 'Save'}
                     </button>
                   </div>
+                </div>
+              )}
+              {data?.cf_api_available && (
+                <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Badge type="ok" text="Cloudflare API Connected" />
+                  <button className="btn" style={{ padding: '3px 10px', fontSize: 11 }} onClick={resetCfAuth}>Reset Credentials</button>
                 </div>
               )}
 
