@@ -1056,11 +1056,143 @@ app.get('/api/tunnel', async (req, res) => {
       };
     })
   );
-  res.json({ nodes: results });
+  const tunnelId = getClusterTunnelId();
+  res.json({ nodes: results, configured: !!tunnelId });
 });
 
-// POST /api/tunnel/setup — install tunnel connector on ALL nodes using token
+// POST /api/tunnel/create — create a tunnel via Cloudflare API and deploy to all nodes
 let tunnelTask = { running: false, log: [], exitCode: null, startTime: null };
+app.post('/api/tunnel/create', async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Tunnel name is required' });
+  if (tunnelTask.running) return res.status(409).json({ error: 'Tunnel setup already running' });
+
+  const token = getCfToken();
+  const accountId = await getAccountId();
+  if (!token || !accountId) return res.status(400).json({ error: 'Cloudflare API credentials not configured' });
+
+  tunnelTask = { running: true, log: [], exitCode: null, startTime: new Date().toISOString() };
+  tunnelTask.log.push(`[${new Date().toLocaleTimeString()}] Creating tunnel "${name.trim()}"...`);
+  res.json({ status: 'started' });
+
+  // Generate a tunnel secret
+  const tunnelSecret = require('crypto').randomBytes(32).toString('base64');
+
+  // Create tunnel via CF API
+  const createResp = await cfApiRequest('POST', '/cfd_tunnel', {
+    name: name.trim(),
+    tunnel_secret: tunnelSecret
+  });
+
+  if (!createResp.success || !createResp.result?.id) {
+    tunnelTask.log.push(`[${new Date().toLocaleTimeString()}] ERROR: ${createResp.errors?.[0]?.message || 'Failed to create tunnel'}`);
+    tunnelTask.exitCode = 1;
+    tunnelTask.running = false;
+    return;
+  }
+
+  const tunnelId = createResp.result.id;
+  tunnelTask.log.push(`[${new Date().toLocaleTimeString()}] Tunnel created: ${tunnelId}`);
+
+  // Build the tunnel token (base64 JSON with account, tunnel, secret)
+  const tunnelToken = Buffer.from(JSON.stringify({
+    a: accountId,
+    t: tunnelId,
+    s: tunnelSecret
+  })).toString('base64');
+
+  // Set default catch-all ingress
+  const cfgResp = await cfApiRequest('PUT', `/cfd_tunnel/${tunnelId}/configurations`, {
+    config: { ingress: [{ service: 'http_status:404' }] }
+  });
+  if (cfgResp.success) {
+    tunnelTask.log.push(`[${new Date().toLocaleTimeString()}] Default ingress configured`);
+  }
+
+  // Save token and deploy to all nodes
+  updateConfKeys({ TUNNEL_TOKEN: tunnelToken });
+  tunnelTask.log.push(`[${new Date().toLocaleTimeString()}] Deploying connector to all nodes...`);
+
+  // Reuse the deploy logic
+  await deployTunnelToNodes(tunnelToken, tunnelTask);
+
+  tunnelTask.log.push(`[${new Date().toLocaleTimeString()}] TASK OK — tunnel "${name.trim()}" created and deployed`);
+  tunnelTask.exitCode = 0;
+  tunnelTask.running = false;
+});
+
+// Shared function: deploy tunnel token to all nodes
+async function deployTunnelToNodes(token, task) {
+  const scriptPath = findScript('setup-tunnel.sh');
+  if (!scriptPath) {
+    task.log.push(`[${new Date().toLocaleTimeString()}] ERROR: setup-tunnel.sh not found`);
+    return false;
+  }
+
+  // Local node
+  task.log.push(`[${new Date().toLocaleTimeString()}] --- This node ---`);
+  const localOk = await new Promise((resolve) => {
+    const child = spawn('bash', [scriptPath, token], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, TUNNEL_TOKEN: token }
+    });
+    child.stdout.on('data', (data) => {
+      data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+        task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`);
+      });
+    });
+    child.stderr.on('data', (data) => {
+      data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+        task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`);
+      });
+    });
+    child.on('close', (code) => resolve(code === 0));
+    child.on('error', () => resolve(false));
+  });
+
+  if (!localOk) {
+    task.log.push(`[${new Date().toLocaleTimeString()}] WARNING: local setup failed`);
+  }
+
+  // Remote nodes
+  const myIps = new Set();
+  Object.values(os.networkInterfaces()).forEach(ifaces => ifaces.forEach(i => { if (i.family === 'IPv4') myIps.add(i.address); }));
+  const otherNodes = nodes.filter(n => !myIps.has(n.ip));
+
+  for (const node of otherNodes) {
+    task.log.push(`[${new Date().toLocaleTimeString()}] --- ${node.name} (${node.ip}) ---`);
+    await new Promise((resolve) => {
+      const postData = JSON.stringify({ token });
+      const req = http.request({
+        hostname: node.ip, port: PORT, path: '/api/tunnel/apply',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
+        timeout: 120000
+      }, (resp) => {
+        let body = '';
+        resp.on('data', d => body += d);
+        resp.on('end', () => {
+          task.log.push(`[${new Date().toLocaleTimeString()}] ${node.name}: ${body.trim() || 'OK'}`);
+          resolve();
+        });
+      });
+      req.on('error', (e) => {
+        task.log.push(`[${new Date().toLocaleTimeString()}] ${node.name}: ${e.message}`);
+        resolve();
+      });
+      req.on('timeout', () => {
+        task.log.push(`[${new Date().toLocaleTimeString()}] ${node.name}: timeout`);
+        req.destroy();
+        resolve();
+      });
+      req.write(postData);
+      req.end();
+    });
+  }
+
+  return localOk;
+}
+
+// POST /api/tunnel/setup — install tunnel connector on ALL nodes using token (legacy/manual)
 app.post('/api/tunnel/setup', async (req, res) => {
   const { token } = req.body;
 
@@ -1560,14 +1692,20 @@ app.post('/api/hyperdrive/cloudflare-auth', (req, res) => {
   }
 });
 
-// DELETE /api/hyperdrive/cloudflare-auth — clear Cloudflare API credentials
+// DELETE /api/hyperdrive/cloudflare-auth — clear all Cloudflare credentials and configs
 app.delete('/api/hyperdrive/cloudflare-auth', (req, res) => {
   try {
-    updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: '', CLOUDFLARE_API_TOKEN: '' });
+    updateConfKeys({
+      CLOUDFLARE_ACCOUNT_ID: '',
+      CLOUDFLARE_API_TOKEN: '',
+      TUNNEL_TOKEN: ''
+    });
     delete process.env.CLOUDFLARE_ACCOUNT_ID;
     delete process.env.CLOUDFLARE_API_TOKEN;
     cachedAccountId = '';
-    res.json({ message: 'Credentials cleared' });
+    // Clear hyperdrive configs
+    writeHyperdriveConfigs({});
+    res.json({ message: 'All Cloudflare credentials and configs cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

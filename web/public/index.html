@@ -1323,7 +1323,7 @@
       const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
       const [toast, setToast] = useState(null);
       const [tunnel, setTunnel] = useState(null);
-      const [tunnelToken, setTunnelToken] = useState('');
+      const [tunnelName, setTunnelName] = useState('');
       const [taskViewer, setTaskViewer] = useState(null);
 
       const applyTheme = (id) => {
@@ -1358,21 +1358,21 @@
 
       useEffect(() => { fetchTunnel(); }, [fetchTunnel]);
 
-      const setupTunnel = async () => {
-        if (!tunnelToken.trim() || tunnelToken.trim().length < 20) return setToast({ message: 'Enter a valid tunnel token', type: 'error' });
+      const createTunnel = async () => {
+        if (!tunnelName.trim()) return setToast({ message: 'Enter a tunnel name', type: 'error' });
         try {
-          const resp = await fetch('/api/tunnel/setup', {
+          const resp = await fetch('/api/tunnel/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: tunnelToken.trim() })
+            body: JSON.stringify({ name: tunnelName.trim() })
           });
           const data = await resp.json();
           if (resp.ok) {
-            setTaskViewer({ title: 'Cloudflare Tunnel Setup — All Nodes', statusUrl: '/api/tunnel/status' });
+            setTaskViewer({ title: 'Creating Tunnel — All Nodes', statusUrl: '/api/tunnel/status' });
           } else {
             setToast({ message: data.error, type: 'error' });
           }
-        } catch { setToast({ message: 'Failed to start tunnel setup', type: 'error' }); }
+        } catch { setToast({ message: 'Failed to create tunnel', type: 'error' }); }
       };
 
       const closeTasks = () => { setTaskViewer(null); fetchTunnel(); };
@@ -1421,20 +1421,21 @@
                 </div>
               )}
 
-              {/* Setup form */}
-              <div style={{ marginBottom: 12 }}>
-                <div className="form-group" style={{ marginBottom: 8 }}>
-                  <label>Tunnel Token</label>
-                  <input type="password" placeholder="Paste tunnel token from Cloudflare Zero Trust dashboard" value={tunnelToken} onChange={e => setTunnelToken(e.target.value)} />
+              {/* Create tunnel */}
+              {!tunnel?.configured && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                      <label>Tunnel Name</label>
+                      <input type="text" placeholder="e.g. pg-cluster-tunnel" value={tunnelName} onChange={e => setTunnelName(e.target.value)} />
+                    </div>
+                    <button className="btn primary" style={{ height: 32 }} onClick={createTunnel}>Create Tunnel</button>
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6, lineHeight: 1.5 }}>
+                    Creates a Cloudflare Tunnel via API and deploys the connector to all cluster nodes.
+                  </p>
                 </div>
-                <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
-                  Create a tunnel at <strong>Cloudflare Zero Trust &gt; Networks &gt; Tunnels</strong>, then copy the token.
-                  Configure public hostname and service (tcp://VIP:5432) in the Cloudflare dashboard.
-                </p>
-                <button className="btn primary" onClick={setupTunnel}>
-                  {tunnelActive ? 'Reconfigure All Nodes' : 'Setup All Nodes'}
-                </button>
-              </div>
+              )}
 
               {/* Tunnel public hostname routes — inline */}
               <TunnelRoutesInline />
