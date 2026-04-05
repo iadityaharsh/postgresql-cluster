@@ -1513,26 +1513,16 @@ app.get('/api/hyperdrive', async (req, res) => {
   res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable });
 });
 
-// POST /api/hyperdrive/cloudflare-auth — save Cloudflare API token, auto-detect account ID
-app.post('/api/hyperdrive/cloudflare-auth', async (req, res) => {
-  const { api_token } = req.body;
-  if (!api_token) return res.status(400).json({ error: 'api_token is required' });
+// POST /api/hyperdrive/cloudflare-auth — save Cloudflare API credentials
+app.post('/api/hyperdrive/cloudflare-auth', (req, res) => {
+  const { account_id, api_token } = req.body;
+  if (!account_id || !api_token) return res.status(400).json({ error: 'account_id and api_token are required' });
   try {
-    // Set token first so getAccountId() can use it
+    updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: account_id, CLOUDFLARE_API_TOKEN: api_token });
+    process.env.CLOUDFLARE_ACCOUNT_ID = account_id;
     process.env.CLOUDFLARE_API_TOKEN = api_token;
-    cachedAccountId = ''; // clear cache to force re-detect
-    updateConfKeys({ CLOUDFLARE_API_TOKEN: api_token });
-
-    // Auto-detect account ID
-    const accountId = await fetchAccountId(api_token);
-    if (accountId) {
-      cachedAccountId = accountId;
-      process.env.CLOUDFLARE_ACCOUNT_ID = accountId;
-      updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: accountId });
-      res.json({ message: 'API token saved, account detected' });
-    } else {
-      res.json({ message: 'API token saved, but could not detect account ID. Check token permissions.' });
-    }
+    cachedAccountId = account_id;
+    res.json({ message: 'Credentials saved' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
