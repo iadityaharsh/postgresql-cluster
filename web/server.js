@@ -1165,6 +1165,180 @@ app.get('/api/tunnel/status', (req, res) => {
 });
 
 // ============================================================
+// Cloudflare API helper for tunnel route management
+// ============================================================
+
+function cfApiRequest(method, apiPath, body) {
+  const token = process.env.CLOUDFLARE_API_TOKEN || conf.CLOUDFLARE_API_TOKEN || '';
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || conf.CLOUDFLARE_ACCOUNT_ID || '';
+  if (!token || !accountId) return Promise.resolve({ error: 'Cloudflare API credentials not configured' });
+
+  const fullPath = `/client/v4/accounts/${accountId}${apiPath}`;
+  const postData = body ? JSON.stringify(body) : null;
+
+  return new Promise((resolve) => {
+    const opts = {
+      hostname: 'api.cloudflare.com',
+      port: 443,
+      path: fullPath,
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 15000
+    };
+    if (postData) opts.headers['Content-Length'] = Buffer.byteLength(postData);
+
+    const req = https.request(opts, (resp) => {
+      let data = '';
+      resp.on('data', d => data += d);
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve({ success: false, error: 'Invalid API response' }); }
+      });
+    });
+    req.on('error', (err) => resolve({ success: false, error: err.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ success: false, error: 'API timeout' }); });
+    if (postData) req.write(postData);
+    req.end();
+  });
+}
+
+// GET /api/tunnel/routes — list all tunnels and their public hostname routes
+app.get('/api/tunnel/routes', async (req, res) => {
+  // List tunnels on the account
+  const tunnelsResp = await cfApiRequest('GET', '/cfd_tunnel?is_deleted=false');
+  if (tunnelsResp.error || !tunnelsResp.success) {
+    return res.json({ available: false, error: tunnelsResp.error || tunnelsResp.errors?.[0]?.message || 'Failed to fetch tunnels', tunnels: [] });
+  }
+
+  const tunnels = (tunnelsResp.result || []).map(t => ({
+    id: t.id,
+    name: t.name,
+    status: t.status,
+    created: t.created_at,
+    connectors: (t.connections || []).length
+  }));
+
+  // For each active tunnel, fetch its configuration (ingress rules / public hostnames)
+  for (const tunnel of tunnels) {
+    const cfgResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnel.id}/configurations`);
+    if (cfgResp.success && cfgResp.result?.config?.ingress) {
+      tunnel.routes = cfgResp.result.config.ingress
+        .filter(r => r.hostname) // exclude catch-all
+        .map(r => ({
+          hostname: r.hostname,
+          service: r.service,
+          path: r.path || '',
+          originRequest: r.originRequest || {}
+        }));
+      tunnel.catch_all = cfgResp.result.config.ingress.find(r => !r.hostname)?.service || 'http_status:404';
+    } else {
+      tunnel.routes = [];
+      tunnel.catch_all = 'http_status:404';
+    }
+  }
+
+  res.json({ available: true, tunnels });
+});
+
+// POST /api/tunnel/routes — add a new public hostname route to a tunnel
+app.post('/api/tunnel/routes', async (req, res) => {
+  const { tunnel_id, hostname, service, path: routePath, originRequest } = req.body;
+  if (!tunnel_id || !hostname || !service) {
+    return res.status(400).json({ error: 'tunnel_id, hostname, and service are required' });
+  }
+
+  // Get current config
+  const cfgResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnel_id}/configurations`);
+  if (!cfgResp.success) {
+    return res.status(500).json({ error: cfgResp.errors?.[0]?.message || 'Failed to fetch tunnel config' });
+  }
+
+  const config = cfgResp.result?.config || { ingress: [{ service: 'http_status:404' }] };
+  const ingress = config.ingress || [{ service: 'http_status:404' }];
+
+  // Check for duplicate hostname
+  if (ingress.some(r => r.hostname === hostname)) {
+    return res.status(409).json({ error: `Route for ${hostname} already exists. Use update instead.` });
+  }
+
+  // Insert before the catch-all (last entry)
+  const newRule = { hostname, service };
+  if (routePath) newRule.path = routePath;
+  if (originRequest && Object.keys(originRequest).length > 0) newRule.originRequest = originRequest;
+  ingress.splice(ingress.length - 1, 0, newRule);
+
+  // Update config
+  const updateResp = await cfApiRequest('PUT', `/cfd_tunnel/${tunnel_id}/configurations`, { config: { ...config, ingress } });
+  if (updateResp.success) {
+    res.json({ message: `Route ${hostname} → ${service} added` });
+  } else {
+    res.status(500).json({ error: updateResp.errors?.[0]?.message || 'Failed to update tunnel config' });
+  }
+});
+
+// PUT /api/tunnel/routes/:hostname — update an existing route
+app.put('/api/tunnel/routes/:hostname', async (req, res) => {
+  const { tunnel_id, service, path: routePath, originRequest } = req.body;
+  const targetHostname = decodeURIComponent(req.params.hostname);
+  if (!tunnel_id || !service) {
+    return res.status(400).json({ error: 'tunnel_id and service are required' });
+  }
+
+  const cfgResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnel_id}/configurations`);
+  if (!cfgResp.success) {
+    return res.status(500).json({ error: cfgResp.errors?.[0]?.message || 'Failed to fetch tunnel config' });
+  }
+
+  const config = cfgResp.result?.config || { ingress: [{ service: 'http_status:404' }] };
+  const ingress = config.ingress || [];
+
+  const idx = ingress.findIndex(r => r.hostname === targetHostname);
+  if (idx === -1) return res.status(404).json({ error: `Route ${targetHostname} not found` });
+
+  ingress[idx] = { hostname: targetHostname, service };
+  if (routePath) ingress[idx].path = routePath;
+  if (originRequest && Object.keys(originRequest).length > 0) ingress[idx].originRequest = originRequest;
+
+  const updateResp = await cfApiRequest('PUT', `/cfd_tunnel/${tunnel_id}/configurations`, { config: { ...config, ingress } });
+  if (updateResp.success) {
+    res.json({ message: `Route ${targetHostname} updated` });
+  } else {
+    res.status(500).json({ error: updateResp.errors?.[0]?.message || 'Failed to update' });
+  }
+});
+
+// DELETE /api/tunnel/routes/:hostname — remove a route from a tunnel
+app.delete('/api/tunnel/routes/:hostname', async (req, res) => {
+  const { tunnel_id } = req.body;
+  const targetHostname = decodeURIComponent(req.params.hostname);
+  if (!tunnel_id) return res.status(400).json({ error: 'tunnel_id is required' });
+
+  const cfgResp = await cfApiRequest('GET', `/cfd_tunnel/${tunnel_id}/configurations`);
+  if (!cfgResp.success) {
+    return res.status(500).json({ error: cfgResp.errors?.[0]?.message || 'Failed to fetch tunnel config' });
+  }
+
+  const config = cfgResp.result?.config || { ingress: [{ service: 'http_status:404' }] };
+  const ingress = config.ingress || [];
+
+  const filtered = ingress.filter(r => r.hostname !== targetHostname);
+  if (filtered.length === ingress.length) return res.status(404).json({ error: `Route ${targetHostname} not found` });
+
+  // Ensure catch-all remains
+  if (!filtered.some(r => !r.hostname)) filtered.push({ service: 'http_status:404' });
+
+  const updateResp = await cfApiRequest('PUT', `/cfd_tunnel/${tunnel_id}/configurations`, { config: { ...config, ingress: filtered } });
+  if (updateResp.success) {
+    res.json({ message: `Route ${targetHostname} deleted` });
+  } else {
+    res.status(500).json({ error: updateResp.errors?.[0]?.message || 'Failed to delete route' });
+  }
+});
+
+// ============================================================
 // Hyperdrive — manage Cloudflare Hyperdrive configs per database
 // ============================================================
 
