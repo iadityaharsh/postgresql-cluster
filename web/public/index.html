@@ -917,7 +917,7 @@
     }
 
     // ========== Hyperdrive Section ==========
-    function HyperdriveSection() {
+    function HyperdriveSection({ collapsed, onToggle }) {
       const [data, setData] = useState(null);
       const [loading, setLoading] = useState(true);
       const [toast, setToast] = useState(null);
@@ -930,8 +930,6 @@
       const [updateKey, setUpdateKey] = useState(null);
       const [updatePassword, setUpdatePassword] = useState('');
       const [copiedId, setCopiedId] = useState(null);
-      const [cfAuth, setCfAuth] = useState({ account_id: '', api_token: '' });
-      const [savingAuth, setSavingAuth] = useState(false);
 
       const fetchData = useCallback(async () => {
         try {
@@ -1037,33 +1035,8 @@
 
       const closeTasks = () => { setTaskViewer(null); fetchData(); };
 
-      const saveCfAuth = async () => {
-        if (!cfAuth.api_token || !cfAuth.account_id) return setToast({ message: 'Both Account ID and API Token are required', type: 'error' });
-        setSavingAuth(true);
-        try {
-          const resp = await fetch('/api/hyperdrive/cloudflare-auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(cfAuth)
-          });
-          const d = await resp.json();
-          if (resp.ok) { setToast({ message: 'Credentials saved', type: 'ok' }); setTimeout(fetchData, 1000); }
-          else setToast({ message: d.error, type: 'error' });
-        } catch { setToast({ message: 'Failed to save credentials', type: 'error' }); }
-        setSavingAuth(false);
-      };
-
-      const resetCfAuth = async () => {
-        try {
-          const resp = await fetch('/api/hyperdrive/cloudflare-auth', { method: 'DELETE' });
-          const d = await resp.json();
-          if (resp.ok) { setToast({ message: 'Credentials cleared', type: 'ok' }); setCfAuth({ account_id: '', api_token: '' }); setTimeout(fetchData, 500); }
-          else setToast({ message: d.error, type: 'error' });
-        } catch { setToast({ message: 'Failed to reset credentials', type: 'error' }); }
-      };
-
       if (loading) return React.createElement('div', { className: 'panel' },
-        React.createElement('div', { className: 'panel-header' }, React.createElement('span', null, 'Hyperdrive')),
+        React.createElement('div', { className: 'panel-header' }, React.createElement('span', null, 'Cloudflare Hyperdrive')),
         React.createElement('div', { className: 'panel-body', style: { color: 'var(--text-muted)' } }, 'Loading...')
       );
 
@@ -1073,48 +1046,21 @@
       return (
         <div>
           <div className="panel">
-            <div className="panel-header">
-              <span>Hyperdrive</span>
+            <div className="panel-header" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={onToggle}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)', fontSize: 10 }}>&#9654;</span>
+                Cloudflare Hyperdrive
+              </span>
               <a href="https://github.com/iadityaharsh/postgresql-cluster/blob/main/docs/hyperdrive.md" target="_blank" rel="noopener noreferrer"
-                 className="btn" style={{ padding: '3px 10px', fontSize: 11, textDecoration: 'none' }}>
+                 className="btn" style={{ padding: '3px 10px', fontSize: 11, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
                 View Docs
               </a>
             </div>
-            <div className="panel-body">
+            {!collapsed && <div className="panel-body">
               <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
                 Connect Cloudflare Workers to your databases via Hyperdrive — edge connection pooling, query caching, and regional routing.
                 {!data?.wrangler_installed && <span style={{ color: 'var(--warn)', display: 'block', marginTop: 4 }}>Wrangler CLI not detected. Install with: npm install -g wrangler</span>}
               </div>
-
-              {/* Cloudflare API credentials */}
-              {data && !data.cf_api_available && (
-                <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Cloudflare API Credentials</div>
-                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
-                    Required to manage Hyperdrive configs and tunnel routes. Account ID is on your <strong>Cloudflare Dashboard</strong> sidebar or in the URL. API token needs <em>Hyperdrive</em> and <em>Cloudflare Tunnel</em> permissions.
-                  </p>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <div className="form-group" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
-                      <label>Account ID</label>
-                      <input type="text" placeholder="From Cloudflare dashboard sidebar" value={cfAuth.account_id} onChange={e => setCfAuth(a => ({ ...a, account_id: e.target.value }))} />
-                    </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
-                      <label>API Token</label>
-                      <input type="password" placeholder="Cloudflare API token" value={cfAuth.api_token} onChange={e => setCfAuth(a => ({ ...a, api_token: e.target.value }))} />
-                    </div>
-                    <button className="btn primary" style={{ height: 32, fontSize: 12 }} onClick={saveCfAuth} disabled={savingAuth}>
-                      {savingAuth ? 'Saving...' : 'Save'}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {data?.cf_api_available && (
-                <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Badge type="ok" text="Cloudflare API Connected" />
-                  {data.cf_account_name && <span style={{ fontSize: 12, color: 'var(--text-bright)', fontWeight: 500 }}>{data.cf_account_name}</span>}
-                  <button className="btn" style={{ padding: '3px 10px', fontSize: 11 }} onClick={resetCfAuth}>Reset Credentials</button>
-                </div>
-              )}
 
               {/* Database table */}
               <table className="data-table" style={{ marginBottom: 16 }}>
@@ -1161,11 +1107,11 @@
                   )}
                 </tbody>
               </table>
-            </div>
+            </div>}
           </div>
 
           {/* Connection cards for configured databases */}
-          {configured.length > 0 && (
+          {!collapsed && configured.length > 0 && (
             <div className="panel">
               <div className="panel-header"><span>Connection Details</span></div>
               <div className="panel-body">
@@ -1325,6 +1271,49 @@
       const [tunnel, setTunnel] = useState(null);
       const [tunnelName, setTunnelName] = useState('');
       const [taskViewer, setTaskViewer] = useState(null);
+      const [cfAuth, setCfAuth] = useState({ account_id: '', api_token: '' });
+      const [cfStatus, setCfStatus] = useState(null);
+      const [savingAuth, setSavingAuth] = useState(false);
+      const [tunnelOpen, setTunnelOpen] = useState(() => localStorage.getItem('panel_tunnel') !== 'closed');
+      const [hyperdriveOpen, setHyperdriveOpen] = useState(() => localStorage.getItem('panel_hyperdrive') !== 'closed');
+
+      const togglePanel = (panel, open, setter) => {
+        const next = !open;
+        setter(next);
+        localStorage.setItem(`panel_${panel}`, next ? 'open' : 'closed');
+      };
+
+      const fetchCfStatus = useCallback(async () => {
+        try {
+          const d = await fetch('/api/cloudflare-auth').then(r => r.json());
+          setCfStatus(d);
+        } catch {}
+      }, []);
+
+      const saveCfAuth = async () => {
+        if (!cfAuth.api_token || !cfAuth.account_id) return setToast({ message: 'Both Account ID and API Token are required', type: 'error' });
+        setSavingAuth(true);
+        try {
+          const resp = await fetch('/api/cloudflare-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfAuth)
+          });
+          const d = await resp.json();
+          if (resp.ok) { setToast({ message: 'Credentials saved', type: 'ok' }); setTimeout(fetchCfStatus, 500); }
+          else setToast({ message: d.error, type: 'error' });
+        } catch { setToast({ message: 'Failed to save credentials', type: 'error' }); }
+        setSavingAuth(false);
+      };
+
+      const resetCfAuth = async () => {
+        try {
+          const resp = await fetch('/api/cloudflare-auth', { method: 'DELETE' });
+          const d = await resp.json();
+          if (resp.ok) { setToast({ message: 'Credentials cleared', type: 'ok' }); setCfAuth({ account_id: '', api_token: '' }); setCfStatus({ available: false }); }
+          else setToast({ message: d.error, type: 'error' });
+        } catch { setToast({ message: 'Failed to reset credentials', type: 'error' }); }
+      };
 
       const applyTheme = (id) => {
         document.documentElement.setAttribute('data-theme', id);
@@ -1356,7 +1345,7 @@
         } catch {}
       }, []);
 
-      useEffect(() => { fetchTunnel(); }, [fetchTunnel]);
+      useEffect(() => { fetchCfStatus(); fetchTunnel(); }, [fetchCfStatus, fetchTunnel]);
 
       const createTunnel = async () => {
         if (!tunnelName.trim()) return setToast({ message: 'Enter a tunnel name', type: 'error' });
@@ -1379,71 +1368,118 @@
 
       const tunnelNodes = tunnel?.nodes || [];
       const tunnelActive = tunnelNodes.some(n => n.running);
+      const cfConnected = cfStatus?.available === true;
 
       return (
         <div>
-          {/* Remote Access */}
+          {/* Cloudflare Account Credentials */}
           <div className="panel">
             <div className="panel-header">
-              <span>Cloudflare Tunnel Setup</span>
-              <a href="https://github.com/iadityaharsh/postgresql-cluster/blob/main/docs/remote-access.md" target="_blank" rel="noopener noreferrer"
-                 className="btn" style={{ padding: '3px 10px', fontSize: 11, textDecoration: 'none' }}>
-                View Docs
-              </a>
+              <span>Cloudflare Account Credentials</span>
             </div>
             <div className="panel-body">
-              <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Expose your PostgreSQL cluster securely using Cloudflare Tunnel.
-                All cluster nodes are configured as tunnel connectors for HA.
-              </div>
-
-              {/* Per-node status */}
-              {tunnelNodes.length > 0 && (
-                <div style={{ marginBottom: 16 }}>
-                  <table className="data-table" style={{ borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
-                    <thead>
-                      <tr>
-                        <th>Node</th>
-                        <th>cloudflared</th>
-                        <th>Service</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tunnelNodes.map(n => (
-                        <tr key={n.name}>
-                          <td style={{ fontWeight: 500 }}>{n.name}</td>
-                          <td>{n.installed ? <><Badge type="ok" text="Installed" /> <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>v{n.version}</span></> : <Badge type="err" text="Not Installed" />}</td>
-                          <td>{n.running ? <Badge type="ok" text="Running" /> : n.installed ? <Badge type="warn" text="Stopped" /> : <Badge type="err" text="N/A" />}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              {!cfStatus && (
+                <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Checking credentials...</div>
               )}
-
-              {/* Create tunnel */}
-              {!tunnel?.configured && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                    <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                      <label>Tunnel Name</label>
-                      <input type="text" placeholder="e.g. pg-cluster-tunnel" value={tunnelName} onChange={e => setTunnelName(e.target.value)} />
-                    </div>
-                    <button className="btn primary" style={{ height: 32 }} onClick={createTunnel}>Create Tunnel</button>
-                  </div>
-                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6, lineHeight: 1.5 }}>
-                    Creates a Cloudflare Tunnel via API and deploys the connector to all cluster nodes.
+              {cfStatus && !cfConnected && (
+                <div>
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
+                    Required to manage Cloudflare Tunnels and Hyperdrive configs. Account ID is on your <strong>Cloudflare Dashboard</strong> sidebar or in the URL. API token needs <em>Hyperdrive</em> and <em>Cloudflare Tunnel</em> permissions.
                   </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
+                      <label>Account ID</label>
+                      <input type="text" placeholder="From Cloudflare dashboard sidebar" value={cfAuth.account_id} onChange={e => setCfAuth(a => ({ ...a, account_id: e.target.value }))} />
+                    </div>
+                    <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                      <label>API Token</label>
+                      <input type="password" placeholder="Cloudflare API token" value={cfAuth.api_token} onChange={e => setCfAuth(a => ({ ...a, api_token: e.target.value }))} />
+                    </div>
+                    <button className="btn primary" style={{ height: 32, fontSize: 12 }} onClick={saveCfAuth} disabled={savingAuth}>
+                      {savingAuth ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
                 </div>
               )}
-
-              {/* Tunnel public hostname routes — inline */}
-              <TunnelRoutesInline />
+              {cfConnected && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Badge type="ok" text="Connected" />
+                  {cfStatus.account_name && <span style={{ fontSize: 12, color: 'var(--text-bright)', fontWeight: 500 }}>{cfStatus.account_name}</span>}
+                  <button className="btn" style={{ padding: '3px 10px', fontSize: 11 }} onClick={resetCfAuth}>Reset Credentials</button>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Hyperdrive */}
-          <HyperdriveSection />
+          {/* Cloudflare Tunnel — collapsible, visible only when API connected */}
+          {cfConnected && (
+            <div className="panel">
+              <div className="panel-header" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => togglePanel('tunnel', tunnelOpen, setTunnelOpen)}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ display: 'inline-block', transition: 'transform 0.2s', transform: tunnelOpen ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 10 }}>&#9654;</span>
+                  Cloudflare Tunnel
+                </span>
+                <a href="https://github.com/iadityaharsh/postgresql-cluster/blob/main/docs/remote-access.md" target="_blank" rel="noopener noreferrer"
+                   className="btn" style={{ padding: '3px 10px', fontSize: 11, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>
+                  View Docs
+                </a>
+              </div>
+              {tunnelOpen && (
+                <div className="panel-body">
+                  <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    Expose your PostgreSQL cluster securely using Cloudflare Tunnel.
+                    All cluster nodes are configured as tunnel connectors for HA.
+                  </div>
+
+                  {/* Per-node status */}
+                  {tunnelNodes.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <table className="data-table" style={{ borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
+                        <thead>
+                          <tr>
+                            <th>Node</th>
+                            <th>cloudflared</th>
+                            <th>Service</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tunnelNodes.map(n => (
+                            <tr key={n.name}>
+                              <td style={{ fontWeight: 500 }}>{n.name}</td>
+                              <td>{n.installed ? <><Badge type="ok" text="Installed" /> <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 6 }}>v{n.version}</span></> : <Badge type="err" text="Not Installed" />}</td>
+                              <td>{n.running ? <Badge type="ok" text="Running" /> : n.installed ? <Badge type="warn" text="Stopped" /> : <Badge type="err" text="N/A" />}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Create tunnel */}
+                  {!tunnel?.configured && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                        <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                          <label>Tunnel Name</label>
+                          <input type="text" placeholder="e.g. pg-cluster-tunnel" value={tunnelName} onChange={e => setTunnelName(e.target.value)} />
+                        </div>
+                        <button className="btn primary" style={{ height: 32 }} onClick={createTunnel}>Create Tunnel</button>
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 6, lineHeight: 1.5 }}>
+                        Creates a Cloudflare Tunnel via API and deploys the connector to all cluster nodes.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Tunnel public hostname routes — inline */}
+                  <TunnelRoutesInline />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Cloudflare Hyperdrive — collapsible, visible only when API connected */}
+          {cfConnected && <HyperdriveSection collapsed={!hyperdriveOpen} onToggle={() => togglePanel('hyperdrive', hyperdriveOpen, setHyperdriveOpen)} />}
 
           {/* Theme */}
           <div className="panel">

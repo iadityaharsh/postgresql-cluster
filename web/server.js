@@ -1677,6 +1677,53 @@ app.get('/api/hyperdrive', async (req, res) => {
   res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable, cf_account_name: cfAccountName });
 });
 
+// GET /api/cloudflare-auth — check Cloudflare API credentials status
+app.get('/api/cloudflare-auth', async (req, res) => {
+  const token = getCfToken();
+  const accountId = await getAccountId();
+  if (!token || !accountId) return res.json({ available: false });
+  let accountName = '';
+  try {
+    const accountResp = await cfApiRequest('GET', '');
+    if (accountResp.success && accountResp.result) accountName = accountResp.result.name || '';
+  } catch {}
+  res.json({ available: true, account_name: accountName, account_id: accountId });
+});
+
+// POST /api/cloudflare-auth — save Cloudflare API credentials
+app.post('/api/cloudflare-auth', (req, res) => {
+  const { account_id, api_token } = req.body;
+  if (!account_id || !api_token) return res.status(400).json({ error: 'account_id and api_token are required' });
+  try {
+    updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: account_id, CLOUDFLARE_API_TOKEN: api_token });
+    process.env.CLOUDFLARE_ACCOUNT_ID = account_id;
+    process.env.CLOUDFLARE_API_TOKEN = api_token;
+    cachedAccountId = account_id;
+    res.json({ message: 'Credentials saved' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/cloudflare-auth — clear all Cloudflare credentials and configs
+app.delete('/api/cloudflare-auth', (req, res) => {
+  try {
+    updateConfKeys({
+      CLOUDFLARE_ACCOUNT_ID: '',
+      CLOUDFLARE_API_TOKEN: '',
+      TUNNEL_TOKEN: ''
+    });
+    delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    delete process.env.CLOUDFLARE_API_TOKEN;
+    cachedAccountId = '';
+    writeHyperdriveConfigs({});
+    res.json({ message: 'All Cloudflare credentials and configs cleared' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Legacy aliases
 // POST /api/hyperdrive/cloudflare-auth — save Cloudflare API credentials
 app.post('/api/hyperdrive/cloudflare-auth', (req, res) => {
   const { account_id, api_token } = req.body;
