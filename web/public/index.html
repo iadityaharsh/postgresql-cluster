@@ -1318,8 +1318,8 @@
       const [cfAuth, setCfAuth] = useState({ account_id: '', api_token: '' });
       const [cfStatus, setCfStatus] = useState(null);
       const [savingAuth, setSavingAuth] = useState(false);
-      const [tunnelOpen, setTunnelOpen] = useState(() => localStorage.getItem('panel_tunnel') !== 'closed');
-      const [hyperdriveOpen, setHyperdriveOpen] = useState(() => localStorage.getItem('panel_hyperdrive') !== 'closed');
+      const [tunnelOpen, setTunnelOpen] = useState(() => localStorage.getItem('panel_tunnel') === 'open');
+      const [hyperdriveOpen, setHyperdriveOpen] = useState(() => localStorage.getItem('panel_hyperdrive') === 'open');
       const [confirmRestart, setConfirmRestart] = useState(false);
       const [restarting, setRestarting] = useState(false);
 
