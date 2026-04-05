@@ -1092,7 +1092,7 @@
                         <td>
                           {cfg ? (
                             <div style={{ display: 'flex', gap: 4 }}>
-                              <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => { setUpdateKey(key); setUpdatePassword(''); }}>Update</button>
+                              <button className="btn" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => { setUpdateKey(key); setUpdatePassword(''); }}>Edit</button>
                               <button className="btn" style={{ padding: '2px 8px', fontSize: 11, color: 'var(--err)' }} onClick={() => setConfirmDelete(key)}>Delete</button>
                             </div>
                           ) : (
@@ -1222,23 +1222,66 @@
             </div>
           )}
 
-          {/* Update password modal */}
-          {updateKey && (
-            <div className="modal-overlay" onClick={() => setUpdateKey(null)}>
-              <div className="modal" onClick={e => e.stopPropagation()}>
-                <h3>Update Password</h3>
-                <p style={{ margin: '8px 0', fontSize: 12, color: 'var(--text-muted)' }}>Enter a new origin password for this Hyperdrive config. This updates the password on Cloudflare's side.</p>
-                <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>New Password</label>
-                  <input type="text" value={updatePassword} onChange={e => setUpdatePassword(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} />
-                </div>
-                <div className="modal-actions">
-                  <button className="btn" onClick={() => setUpdateKey(null)}>Cancel</button>
-                  <button className="btn primary" onClick={() => updateConfig(updateKey)}>Update</button>
+          {/* Edit config modal */}
+          {updateKey && (() => {
+            const editCfg = entries.find(e => e.config && `${e.config.database}-${e.config.username}` === updateKey)?.config;
+            if (!editCfg) return null;
+            const snippet = `{\n  "hyperdrive": [\n    {\n      "binding": "HYPERDRIVE",\n      "id": "${editCfg.hyperdrive_id || 'YOUR_HYPERDRIVE_ID'}"\n    }\n  ]\n}`;
+            return (
+              <div className="modal-overlay" onClick={() => setUpdateKey(null)}>
+                <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+                  <h3>Edit — {editCfg.database}</h3>
+
+                  <table className="kv-table" style={{ marginTop: 12, marginBottom: 16 }}>
+                    <tbody>
+                      <tr><td>Database</td><td>{editCfg.database}</td></tr>
+                      <tr><td>Hostname</td><td>{editCfg.hostname}</td></tr>
+                      <tr><td>User</td><td>{editCfg.username}</td></tr>
+                      <tr><td>Hyperdrive Name</td><td>{editCfg.hyperdrive_name || '\u2014'}</td></tr>
+                      <tr>
+                        <td>Hyperdrive ID</td>
+                        <td style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                          {editCfg.hyperdrive_id || 'N/A'}
+                          {editCfg.hyperdrive_id && (
+                            <button className="btn" style={{ marginLeft: 8, padding: '1px 6px', fontSize: 10 }}
+                              onClick={() => copyToClipboard(editCfg.hyperdrive_id, updateKey + '-edit-id')}>
+                              {copiedId === updateKey + '-edit-id' ? 'Copied!' : 'Copy'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      <tr><td>Created</td><td>{editCfg.created ? new Date(editCfg.created).toLocaleDateString() : 'N/A'}</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div style={{ position: 'relative', marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 4 }}>wrangler.jsonc snippet:</div>
+                    <pre style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 4, padding: '8px 10px', fontSize: 11, color: 'var(--text)', overflow: 'auto', maxHeight: 120, margin: 0 }}>{snippet}</pre>
+                    <button className="btn" style={{ position: 'absolute', top: 0, right: 0, padding: '2px 8px', fontSize: 10 }}
+                      onClick={() => copyToClipboard(snippet, updateKey + '-edit-snippet')}>
+                      {copiedId === updateKey + '-edit-snippet' ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Update Origin Password</div>
+                    <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                      Change the origin password on Cloudflare's side. This does not update the database user password.
+                    </p>
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label>New Password</label>
+                      <input type="text" value={updatePassword} onChange={e => setUpdatePassword(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} placeholder="Leave empty to keep current" />
+                    </div>
+                  </div>
+
+                  <div className="modal-actions">
+                    <button className="btn" onClick={() => setUpdateKey(null)}>Close</button>
+                    <button className="btn primary" onClick={() => updateConfig(updateKey)} disabled={!updatePassword}>Update Password</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {confirmDelete && (
             <ConfirmModal
