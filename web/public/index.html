@@ -760,6 +760,8 @@
       const [updateKey, setUpdateKey] = useState(null);
       const [updatePassword, setUpdatePassword] = useState('');
       const [copiedId, setCopiedId] = useState(null);
+      const [cfAuth, setCfAuth] = useState({ account_id: '', api_token: '' });
+      const [savingAuth, setSavingAuth] = useState(false);
 
       const fetchData = useCallback(async () => {
         try {
@@ -865,6 +867,22 @@
 
       const closeTasks = () => { setTaskViewer(null); fetchData(); };
 
+      const saveCfAuth = async () => {
+        if (!cfAuth.account_id || !cfAuth.api_token) return setToast({ message: 'Both Account ID and API Token are required', type: 'error' });
+        setSavingAuth(true);
+        try {
+          const resp = await fetch('/api/hyperdrive/cloudflare-auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfAuth)
+          });
+          const d = await resp.json();
+          if (resp.ok) { setToast({ message: 'Credentials saved — reloading...', type: 'ok' }); setTimeout(fetchData, 1000); }
+          else setToast({ message: d.error, type: 'error' });
+        } catch { setToast({ message: 'Failed to save credentials', type: 'error' }); }
+        setSavingAuth(false);
+      };
+
       if (loading) return React.createElement('div', { className: 'panel' },
         React.createElement('div', { className: 'panel-header' }, React.createElement('span', null, 'Hyperdrive')),
         React.createElement('div', { className: 'panel-body', style: { color: 'var(--text-muted)' } }, 'Loading...')
@@ -888,6 +906,29 @@
                 Connect Cloudflare Workers to your databases via Hyperdrive — edge connection pooling, query caching, and regional routing.
                 {!data?.wrangler_installed && <span style={{ color: 'var(--warn)', display: 'block', marginTop: 4 }}>Wrangler CLI not detected. Install with: npm install -g wrangler</span>}
               </div>
+
+              {/* Cloudflare API credentials — shown when not configured */}
+              {data && !data.cf_api_available && (
+                <div style={{ marginBottom: 16, padding: 12, background: 'var(--bg-input)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>Cloudflare API Credentials</div>
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10, lineHeight: 1.5 }}>
+                    Required to auto-detect existing Hyperdrive configs. Create an API token at <strong>Cloudflare Dashboard &gt; My Profile &gt; API Tokens</strong> with <em>Hyperdrive Edit</em> permission.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
+                      <label>Account ID</label>
+                      <input type="text" placeholder="e.g. a1b2c3d4..." value={cfAuth.account_id} onChange={e => setCfAuth(a => ({ ...a, account_id: e.target.value }))} />
+                    </div>
+                    <div className="form-group" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
+                      <label>API Token</label>
+                      <input type="password" placeholder="Cloudflare API token" value={cfAuth.api_token} onChange={e => setCfAuth(a => ({ ...a, api_token: e.target.value }))} />
+                    </div>
+                    <button className="btn primary" style={{ height: 32, fontSize: 12 }} onClick={saveCfAuth} disabled={savingAuth}>
+                      {savingAuth ? 'Saving...' : 'Save & Detect'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Database table */}
               <table className="data-table" style={{ marginBottom: 16 }}>

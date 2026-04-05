@@ -1187,9 +1187,34 @@ function writeHyperdriveConfigs(configs) {
   fs.writeFileSync(HYPERDRIVE_JSON, JSON.stringify(configs, null, 2));
 }
 
+// Fetch Hyperdrive configs from Cloudflare API
+function fetchCloudflareHyperdrives() {
+  const token = process.env.CLOUDFLARE_API_TOKEN || conf.CLOUDFLARE_API_TOKEN || '';
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || conf.CLOUDFLARE_ACCOUNT_ID || '';
+  if (!token || !accountId) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const req = https.get(`https://api.cloudflare.com/client/v4/accounts/${accountId}/hyperdrive/configs`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      timeout: 8000
+    }, (resp) => {
+      let body = '';
+      resp.on('data', d => body += d);
+      resp.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          resolve(data.success ? (data.result || []) : null);
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
 // GET /api/hyperdrive — list all configs + databases with status
 app.get('/api/hyperdrive', async (req, res) => {
-  const configs = readHyperdriveConfigs();
+  let configs = readHyperdriveConfigs();
 
   // Get database list from PostgreSQL
   let databases = [];
@@ -1212,6 +1237,49 @@ app.get('/api/hyperdrive', async (req, res) => {
     await pool.end().catch(() => {});
   } catch {}
 
+  // Fetch existing Hyperdrive configs from Cloudflare API and auto-merge
+  let cfApiAvailable = false;
+  const remoteConfigs = await fetchCloudflareHyperdrives();
+  if (remoteConfigs) {
+    cfApiAvailable = true;
+    let changed = false;
+    for (const hd of remoteConfigs) {
+      const origin = hd.origin || {};
+      const dbName = origin.database;
+      if (!dbName) continue;
+
+      // Check if we already have this config locally (by hyperdrive_id or database match)
+      const existingByID = Object.values(configs).find(c => c.hyperdrive_id === hd.id);
+      if (existingByID) continue;
+
+      const existingByDB = Object.values(configs).find(c => c.database === dbName);
+      if (existingByDB) {
+        // Update hyperdrive_id if missing
+        if (!existingByDB.hyperdrive_id && hd.id) {
+          existingByDB.hyperdrive_id = hd.id;
+          changed = true;
+        }
+        continue;
+      }
+
+      // New config detected from Cloudflare — auto-import if it matches a local database
+      // or import it anyway so the user can see all their Hyperdrive configs
+      const key = `${dbName}-${origin.user || 'unknown'}`;
+      configs[key] = {
+        hyperdrive_id: hd.id,
+        hyperdrive_name: hd.name || '',
+        database: dbName,
+        username: origin.user || '',
+        hostname: origin.host || '',
+        access_client_id: '',
+        created: hd.created_on || new Date().toISOString(),
+        source: 'cloudflare-api'
+      };
+      changed = true;
+    }
+    if (changed) writeHyperdriveConfigs(configs);
+  }
+
   // Check wrangler availability (quick — just check if binary exists)
   let wranglerInstalled = false;
   try {
@@ -1229,14 +1297,29 @@ app.get('/api/hyperdrive', async (req, res) => {
     };
   });
 
-  // Include configs for databases that might have been dropped
+  // Include configs for databases not in the local cluster (external or dropped)
   Object.values(configs).forEach(cfg => {
     if (!databases.includes(cfg.database)) {
-      entries.push({ database: cfg.database, configured: true, config: cfg, missing: true });
+      entries.push({ database: cfg.database, configured: true, config: cfg, missing: !databases.length });
     }
   });
 
-  res.json({ entries, wrangler_installed: wranglerInstalled });
+  res.json({ entries, wrangler_installed: wranglerInstalled, cf_api_available: cfApiAvailable });
+});
+
+// POST /api/hyperdrive/cloudflare-auth — save Cloudflare API credentials to cluster.conf
+app.post('/api/hyperdrive/cloudflare-auth', (req, res) => {
+  const { account_id, api_token } = req.body;
+  if (!account_id || !api_token) return res.status(400).json({ error: 'account_id and api_token are required' });
+  try {
+    updateConfKeys({ CLOUDFLARE_ACCOUNT_ID: account_id, CLOUDFLARE_API_TOKEN: api_token });
+    // Also set as env vars for the current process
+    process.env.CLOUDFLARE_ACCOUNT_ID = account_id;
+    process.env.CLOUDFLARE_API_TOKEN = api_token;
+    res.json({ message: 'Cloudflare credentials saved' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/hyperdrive/create-user — create a dedicated DB user for Hyperdrive
