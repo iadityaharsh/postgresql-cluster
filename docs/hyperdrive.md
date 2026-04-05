@@ -2,6 +2,39 @@
 
 Connect Cloudflare Workers to your PostgreSQL cluster using Hyperdrive — Cloudflare's edge connection pooler. Hyperdrive connects through your Cloudflare Tunnel, pools connections, and caches query results automatically.
 
+## Quick Setup (Script)
+
+The included script handles everything — enables SSL, creates the DB user, and provisions Hyperdrive via Wrangler:
+
+```bash
+# Interactive — prompts for all values
+./scripts/setup-hyperdrive.sh
+
+# Or pass everything as flags
+./scripts/setup-hyperdrive.sh \
+  --host db-cluster.example.com \
+  --db your_db \
+  --user your_cf_user \
+  --password 'secure_random_password' \
+  --hyperdrive-name your-hyperdrive \
+  --access-client-id YOUR_CLIENT_ID.access \
+  --access-client-secret YOUR_CLIENT_SECRET
+```
+
+The script will:
+1. Check that Wrangler CLI is installed (installs if missing)
+2. Enable SSL on PostgreSQL via Patroni (if not already on)
+3. Create the dedicated database user with proper grants
+4. Run `wrangler hyperdrive create` with the correct flags
+5. Output the Hyperdrive ID and a ready-to-paste `wrangler.jsonc` snippet
+6. Save credentials to `hyperdrive.conf` for reference
+
+> **Prerequisite:** Run `npx wrangler login` first to authenticate Wrangler with your Cloudflare account.
+
+For a manual step-by-step setup, continue reading below.
+
+---
+
 ## Prerequisites
 
 - Cloudflare Tunnel running on the cluster (see [Remote Access](remote-access.md))
@@ -238,6 +271,27 @@ Set `"workers_dev": false` in `wrangler.jsonc` to disable the `.workers.dev` sub
 
 ### Pages Functions not executing
 Cloudflare Pages uses `functions/` directory, but Workers use a single entry point (`main` in wrangler config). If migrating from Pages to Workers, consolidate all API routes into your Worker's fetch handler.
+
+---
+
+## Script Reference
+
+```
+./scripts/setup-hyperdrive.sh [options]
+
+Options:
+  --db <name>                 Database name (default: postgres)
+  --user <name>               Hyperdrive DB user to create
+  --password <pass>           Password for the DB user (auto-generated if omitted)
+  --host <hostname>           Tunnel hostname (e.g. db-cluster.example.com)
+  --hyperdrive-name <name>    Hyperdrive config name (default: <cluster>-hyperdrive)
+  --access-client-id <id>     Cloudflare Access Client ID
+  --access-client-secret <s>  Cloudflare Access Client Secret
+  --skip-db-setup             Skip DB user creation (user already exists)
+  -h, --help                  Show help
+```
+
+The script saves the generated config to `hyperdrive.conf` in the project root. This file contains credentials and is gitignored.
 
 ---
 
