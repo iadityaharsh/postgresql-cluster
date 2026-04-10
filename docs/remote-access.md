@@ -52,7 +52,7 @@ After the tunnel is running, lock it down so only your apps can connect:
 
 ### 1. Create a Service Token
 
-1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) > **Access > Service Auth**
+1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) > **Access controls > Service credentials**
 2. Click **Create Service Token**
 3. Name it (e.g. `pg-cluster-prod`)
 4. Save the **Client ID** and **Client Secret** — you won't see the secret again
