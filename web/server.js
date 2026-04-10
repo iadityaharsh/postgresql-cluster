@@ -2091,7 +2091,7 @@ app.post('/api/hyperdrive', (req, res) => {
     --access-client-secret="${access_client_secret}" 2>&1`;
 
   const child = spawn('bash', ['-c', cmd], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || '' }
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: getCfToken() }
   });
 
   let output = '';
@@ -2169,7 +2169,7 @@ app.put('/api/hyperdrive/:key', (req, res) => {
 
   const cmd = `npx wrangler hyperdrive update "${cfg.hyperdrive_id}" --origin-password="${password.replace(/"/g, '\\"')}" 2>&1`;
   const child = spawn('bash', ['-c', cmd], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || '' }
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: getCfToken() }
   });
 
   let output = '';
@@ -2202,7 +2202,7 @@ app.delete('/api/hyperdrive/:key', (req, res) => {
 
   const cmd = `npx wrangler hyperdrive delete "${cfg.hyperdrive_id}" 2>&1`;
   const child = spawn('bash', ['-c', cmd], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN || '' }
+    env: { ...process.env, CLOUDFLARE_API_TOKEN: getCfToken() }
   });
 
   let output = '';
