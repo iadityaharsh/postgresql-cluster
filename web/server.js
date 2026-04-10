@@ -2158,18 +2158,21 @@ app.put('/api/hyperdrive/:key', async (req, res) => {
     return res.status(400).json({ error: 'password and existing hyperdrive_id required' });
   }
 
+  const origin = {
+    scheme: 'postgres',
+    host: cfg.hostname,
+    database: cfg.database,
+    user: cfg.username,
+    password: password
+  };
+  if (cfg.access_client_id) {
+    origin.access_client_id = cfg.access_client_id;
+  } else {
+    origin.port = 5432;
+  }
   const result = await cfApiRequest('PUT', `/hyperdrive/configs/${cfg.hyperdrive_id}`, {
     name: cfg.hyperdrive_name,
-    origin: {
-      scheme: 'postgres',
-      host: cfg.hostname,
-      port: 5432,
-      database: cfg.database,
-      user: cfg.username,
-      password: password,
-      access_client_id: cfg.access_client_id || '',
-      access_client_secret: ''
-    }
+    origin
   });
 
   if (result.success) {
