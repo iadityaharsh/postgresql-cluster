@@ -2084,19 +2084,21 @@ app.post('/api/hyperdrive', async (req, res) => {
   res.json({ status: 'started' });
 
   try {
-    const body = {
-      name: hdName,
-      origin: {
-        scheme: 'postgres',
-        host: hostname,
-        port: 5432,
-        database: database,
-        user: username,
-        password: password,
-        access_client_id: access_client_id,
-        access_client_secret: access_client_secret
-      }
+    const origin = {
+      scheme: 'postgres',
+      host: hostname,
+      database: database,
+      user: username,
+      password: password
     };
+    // Access credentials and port are mutually exclusive
+    if (access_client_id && access_client_secret) {
+      origin.access_client_id = access_client_id;
+      origin.access_client_secret = access_client_secret;
+    } else {
+      origin.port = 5432;
+    }
+    const body = { name: hdName, origin };
 
     hyperdriveTask.log.push(`${ts()} Calling Cloudflare API...`);
     const result = await cfApiRequest('POST', '/hyperdrive/configs', body);
