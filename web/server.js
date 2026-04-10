@@ -322,7 +322,7 @@ app.get('/api/databases', async (req, res) => {
              numbackends as connections
       FROM pg_stat_database
       WHERE datname NOT IN ('template0', 'template1')
-      ORDER BY pg_database_size(datname) DESC
+      ORDER BY datname
     `);
     res.json(result.rows);
   } catch (err) {
