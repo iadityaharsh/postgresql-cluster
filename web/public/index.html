@@ -925,11 +925,21 @@
       const [updatePassword, setUpdatePassword] = useState('');
       const [detailKey, setDetailKey] = useState(null);
       const [copiedId, setCopiedId] = useState(null);
+      const [tunnelRoutes, setTunnelRoutes] = useState([]);
 
       const fetchData = useCallback(async () => {
         try {
-          const d = await fetch('/api/hyperdrive').then(r => r.json());
+          const [d, routes] = await Promise.all([
+            fetch('/api/hyperdrive').then(r => r.json()),
+            fetch('/api/tunnel/routes').then(r => r.json()).catch(() => ({ tunnels: [] }))
+          ]);
           setData(d);
+          // Collect all route hostnames from all tunnels
+          const allRoutes = [];
+          (routes.tunnels || []).forEach(t => {
+            (t.routes || []).forEach(r => allRoutes.push(r.hostname));
+          });
+          setTunnelRoutes(allRoutes);
         } catch {}
         setLoading(false);
       }, []);
@@ -1190,7 +1200,18 @@
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-bright)', marginBottom: 8 }}>2. Hyperdrive Config</div>
                   <div className="form-group" style={{ marginBottom: 6 }}>
                     <label>Tunnel Hostname</label>
-                    <input type="text" value={form.hostname} onChange={e => setForm(f => ({ ...f, hostname: e.target.value }))} placeholder="db-cluster.example.com" />
+                    {(() => {
+                      const usedHostnames = configured.map(e => e.config?.hostname).filter(Boolean);
+                      const available = tunnelRoutes.filter(h => !usedHostnames.includes(h));
+                      return available.length > 0 ? (
+                        <select value={form.hostname} onChange={e => setForm(f => ({ ...f, hostname: e.target.value }))} style={{ width: '100%' }}>
+                          <option value="">Select a tunnel hostname</option>
+                          {available.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                      ) : (
+                        <input type="text" value={form.hostname} onChange={e => setForm(f => ({ ...f, hostname: e.target.value }))} placeholder="No unused tunnel routes — enter manually" />
+                      );
+                    })()}
                   </div>
                   <div className="form-group" style={{ marginBottom: 6 }}>
                     <label>Hyperdrive Name (optional)</label>
