@@ -3,3 +3,11 @@ hyperdrive.conf
 hyperdrive.json
 auth.json
 *.zip
+
+# Build artifacts and dependencies
+# Note: web/dist/ IS tracked — install hosts run `npm install --production`
+# and don't have devDependencies (vite) available to build it locally.
+web/node_modules/
+web/coverage/
+*.log
+.DS_Store

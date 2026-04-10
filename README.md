@@ -154,6 +154,13 @@ lxc restart <container-name>
 - **[Remote Access](docs/remote-access.md)** — Cloudflare Tunnel (token-based HA), Access policies, Workers
 - **[Hyperdrive](docs/hyperdrive.md)** — Connect Cloudflare Workers to the cluster via Hyperdrive (edge connection pooling)
 
+## Contributing
+
+Bug reports, patches, and reviews are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for development setup, the test suite,
+and the release process. Notable changes are tracked in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
-MIT
+[MIT](LICENSE) — © Aditya Harsh
