@@ -2063,10 +2063,10 @@ app.post('/api/hyperdrive/create-user', async (req, res) => {
   }
 });
 
-// POST /api/hyperdrive — create a new Hyperdrive config via wrangler
+// POST /api/hyperdrive — create a new Hyperdrive config via Cloudflare API
 let hyperdriveTask = { running: false, log: [], exitCode: null, startTime: null };
 
-app.post('/api/hyperdrive', (req, res) => {
+app.post('/api/hyperdrive', async (req, res) => {
   const { database, username, password, hostname, hyperdrive_name, access_client_id, access_client_secret } = req.body;
 
   if (!database || !username || !password || !hostname || !access_client_id || !access_client_secret) {
@@ -2077,44 +2077,33 @@ app.post('/api/hyperdrive', (req, res) => {
   const hdName = hyperdrive_name || `${CLUSTER_NAME}-${database}`;
 
   hyperdriveTask = { running: true, log: [], exitCode: null, startTime: new Date().toISOString() };
-  hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] Creating Hyperdrive config "${hdName}"...`);
-  hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] Host: ${hostname}, DB: ${database}, User: ${username}`);
+  const ts = () => `[${new Date().toLocaleTimeString()}]`;
+  hyperdriveTask.log.push(`${ts()} Creating Hyperdrive config "${hdName}"...`);
+  hyperdriveTask.log.push(`${ts()} Host: ${hostname}, DB: ${database}, User: ${username}`);
 
   res.json({ status: 'started' });
 
-  const cmd = `npx wrangler hyperdrive create "${hdName}" \
-    --origin-host="${hostname}" \
-    --origin-user="${username}" \
-    --origin-password="${password.replace(/"/g, '\\"')}" \
-    --database="${database}" \
-    --access-client-id="${access_client_id}" \
-    --access-client-secret="${access_client_secret}" 2>&1`;
+  try {
+    const body = {
+      name: hdName,
+      origin: {
+        scheme: 'postgres',
+        host: hostname,
+        port: 5432,
+        database: database,
+        user: username,
+        password: password,
+        access_client_id: access_client_id,
+        access_client_secret: access_client_secret
+      }
+    };
 
-  const child = spawn('bash', ['-c', cmd], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: getCfToken() }
-  });
+    hyperdriveTask.log.push(`${ts()} Calling Cloudflare API...`);
+    const result = await cfApiRequest('POST', '/hyperdrive/configs', body);
 
-  let output = '';
-  child.stdout.on('data', (data) => {
-    output += data.toString();
-    data.toString().split('\n').filter(l => l.trim()).forEach(line => {
-      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] ${line}`);
-    });
-  });
-  child.stderr.on('data', (data) => {
-    output += data.toString();
-    data.toString().split('\n').filter(l => l.trim()).forEach(line => {
-      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] ${line}`);
-    });
-  });
+    if (result.success && result.result) {
+      const hyperdriveId = result.result.id;
 
-  child.on('close', (code) => {
-    if (code === 0) {
-      // Extract Hyperdrive ID from output
-      const idMatch = output.match(/([0-9a-f]{32})/i) || output.match(/id:\s*(\S+)/i);
-      const hyperdriveId = idMatch ? idMatch[1] : null;
-
-      // Save to configs
       const configs = readHyperdriveConfigs();
       const configKey = `${database}-${username}`;
       configs[configKey] = {
@@ -2128,20 +2117,20 @@ app.post('/api/hyperdrive', (req, res) => {
       };
       writeHyperdriveConfigs(configs);
 
-      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] Hyperdrive ID: ${hyperdriveId || 'see output above'}`);
-      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] TASK OK — config saved`);
+      hyperdriveTask.log.push(`${ts()} Hyperdrive ID: ${hyperdriveId}`);
+      hyperdriveTask.log.push(`${ts()} TASK OK — config saved`);
+      hyperdriveTask.exitCode = 0;
     } else {
-      hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] TASK ERROR (exit code ${code})`);
+      const errMsg = result.errors?.[0]?.message || result.error || JSON.stringify(result);
+      hyperdriveTask.log.push(`${ts()} API error: ${errMsg}`);
+      hyperdriveTask.log.push(`${ts()} TASK ERROR`);
+      hyperdriveTask.exitCode = 1;
     }
-    hyperdriveTask.exitCode = code;
-    hyperdriveTask.running = false;
-  });
-
-  child.on('error', (err) => {
-    hyperdriveTask.log.push(`[${new Date().toLocaleTimeString()}] ERROR: ${err.message}`);
+  } catch (err) {
+    hyperdriveTask.log.push(`${ts()} ERROR: ${err.message}`);
     hyperdriveTask.exitCode = 1;
-    hyperdriveTask.running = false;
-  });
+  }
+  hyperdriveTask.running = false;
 });
 
 // GET /api/hyperdrive/status — task log for hyperdrive create
@@ -2157,7 +2146,7 @@ app.get('/api/hyperdrive/status', (req, res) => {
 });
 
 // PUT /api/hyperdrive/:key — update a Hyperdrive config (e.g. rotate password)
-app.put('/api/hyperdrive/:key', (req, res) => {
+app.put('/api/hyperdrive/:key', async (req, res) => {
   const configs = readHyperdriveConfigs();
   const cfg = configs[req.params.key];
   if (!cfg) return res.status(404).json({ error: 'Config not found' });
@@ -2167,58 +2156,52 @@ app.put('/api/hyperdrive/:key', (req, res) => {
     return res.status(400).json({ error: 'password and existing hyperdrive_id required' });
   }
 
-  const cmd = `npx wrangler hyperdrive update "${cfg.hyperdrive_id}" --origin-password="${password.replace(/"/g, '\\"')}" 2>&1`;
-  const child = spawn('bash', ['-c', cmd], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: getCfToken() }
-  });
-
-  let output = '';
-  child.stdout.on('data', d => output += d);
-  child.stderr.on('data', d => output += d);
-  child.on('close', (code) => {
-    if (code === 0) {
-      configs[req.params.key].updated = new Date().toISOString();
-      writeHyperdriveConfigs(configs);
-      res.json({ message: 'Password updated', output: output.trim() });
-    } else {
-      res.status(500).json({ error: output.trim() || 'wrangler update failed' });
+  const result = await cfApiRequest('PUT', `/hyperdrive/configs/${cfg.hyperdrive_id}`, {
+    name: cfg.hyperdrive_name,
+    origin: {
+      scheme: 'postgres',
+      host: cfg.hostname,
+      port: 5432,
+      database: cfg.database,
+      user: cfg.username,
+      password: password,
+      access_client_id: cfg.access_client_id || '',
+      access_client_secret: ''
     }
   });
-  child.on('error', (err) => res.status(500).json({ error: err.message }));
+
+  if (result.success) {
+    configs[req.params.key].updated = new Date().toISOString();
+    writeHyperdriveConfigs(configs);
+    res.json({ message: 'Password updated' });
+  } else {
+    const errMsg = result.errors?.[0]?.message || result.error || 'API request failed';
+    res.status(500).json({ error: errMsg });
+  }
 });
 
 // DELETE /api/hyperdrive/:key — delete a Hyperdrive config
-app.delete('/api/hyperdrive/:key', (req, res) => {
+app.delete('/api/hyperdrive/:key', async (req, res) => {
   const configs = readHyperdriveConfigs();
   const cfg = configs[req.params.key];
   if (!cfg) return res.status(404).json({ error: 'Config not found' });
 
   if (!cfg.hyperdrive_id) {
-    // No remote config to delete, just remove local
     delete configs[req.params.key];
     writeHyperdriveConfigs(configs);
     return res.json({ message: 'Local config removed' });
   }
 
-  const cmd = `npx wrangler hyperdrive delete "${cfg.hyperdrive_id}" 2>&1`;
-  const child = spawn('bash', ['-c', cmd], {
-    env: { ...process.env, CLOUDFLARE_API_TOKEN: getCfToken() }
-  });
+  const result = await cfApiRequest('DELETE', `/hyperdrive/configs/${cfg.hyperdrive_id}`);
+  delete configs[req.params.key];
+  writeHyperdriveConfigs(configs);
 
-  let output = '';
-  child.stdout.on('data', d => output += d);
-  child.stderr.on('data', d => output += d);
-  child.on('close', (code) => {
-    // Remove from local config regardless — if remote delete fails, user can recreate
-    delete configs[req.params.key];
-    writeHyperdriveConfigs(configs);
-    if (code === 0) {
-      res.json({ message: `Hyperdrive ${cfg.hyperdrive_name} deleted` });
-    } else {
-      res.json({ message: 'Local config removed, but wrangler delete may have failed', warning: output.trim() });
-    }
-  });
-  child.on('error', (err) => res.status(500).json({ error: err.message }));
+  if (result.success) {
+    res.json({ message: `Hyperdrive ${cfg.hyperdrive_name} deleted` });
+  } else {
+    const errMsg = result.errors?.[0]?.message || result.error || '';
+    res.json({ message: 'Local config removed', warning: errMsg || 'API delete may have failed' });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
