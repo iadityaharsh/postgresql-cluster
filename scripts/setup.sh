@@ -8,12 +8,67 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
+
+# ---- Parse args ----
+DRY_RUN=false
+FORCE=false
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=true ;;
+        --force) FORCE=true ;;
+        -h|--help)
+            echo "Usage: $0 [--dry-run] [--force]"
+            echo "  --dry-run  Show what would happen without making changes"
+            echo "  --force    Skip 'already configured' guards"
+            exit 0
+            ;;
+    esac
+done
+
 load_config
 
 # ---- Detect which node this is ----
 NODE_NUM=$(get_current_node)
 NODE_NAME=$(get_node_name "$NODE_NUM")
 NODE_IP=$(get_node_ip "$NODE_NUM")
+
+if [ "$DRY_RUN" = true ]; then
+    echo "*** DRY-RUN MODE — no changes will be made ***"
+    echo ""
+    echo "Plan:"
+    echo "  Node:           ${NODE_NUM} (${NODE_NAME}) at ${NODE_IP}"
+    echo "  Cluster name:   ${CLUSTER_NAME}"
+    echo "  PG version:     ${PG_VERSION}"
+    echo "  PG data dir:    ${PG_DATA_DIR}"
+    echo "  Templates:      ${TEMPLATES_DIR}"
+    if [[ "${ENABLE_VIP}" == "Y" || "${ENABLE_VIP}" == "y" ]]; then
+        echo "  VIP:            ${VIP_ADDRESS}:${PG_PORT}"
+    fi
+    echo ""
+    echo "Would run:"
+    echo "  [1/5] Install packages (apt-get)"
+    echo "  [2/5] Setup etcd (TLS certs, /etc/default/etcd, systemctl start etcd)"
+    if [ -d /var/lib/etcd/default ] && [ -n "$(ls -A /var/lib/etcd/default 2>/dev/null)" ]; then
+        echo "        etcd data dir already populated — would preserve (use --force to wipe)"
+    else
+        echo "        etcd data dir empty — would bootstrap fresh"
+    fi
+    echo "  [3/5] Setup Patroni (config, systemd unit, systemctl start patroni)"
+    if systemctl is-active patroni &>/dev/null; then
+        echo "        Patroni already running — would preserve PG_DATA_DIR"
+    else
+        echo "        Patroni not running — would wipe and bootstrap PG_DATA_DIR"
+    fi
+    if [[ "${ENABLE_VIP}" == "Y" || "${ENABLE_VIP}" == "y" ]]; then
+        echo "  [4/5] Setup VIP manager"
+    else
+        echo "  [4/5] VIP not enabled — would skip"
+    fi
+    echo "  [5/5] Setup monitoring dashboard (Node.js + systemd)"
+    echo ""
+    echo "Re-run without --dry-run to apply."
+    exit 0
+fi
 
 echo "=============================================="
 echo "  Setting up: Node ${NODE_NUM} — ${NODE_NAME}"
@@ -42,11 +97,19 @@ echo "=============================================="
 echo "  [2/5] Setting up etcd"
 echo "=============================================="
 
-# Stop etcd if running
-systemctl stop etcd 2>/dev/null || true
+# Idempotency: only wipe etcd data on first bootstrap.
+# If etcd is healthy and has cluster members, leave data intact (re-runs are safe).
+ETCD_HAS_DATA=false
+if [ -d /var/lib/etcd/default ] && [ -n "$(ls -A /var/lib/etcd/default 2>/dev/null)" ]; then
+    ETCD_HAS_DATA=true
+fi
 
-# Clear old etcd data for fresh cluster bootstrap
-rm -rf /var/lib/etcd/default
+if [ "$ETCD_HAS_DATA" = true ] && [ "$FORCE" != true ]; then
+    echo "etcd data dir already populated — skipping wipe (use --force to reinitialize)."
+else
+    systemctl stop etcd 2>/dev/null || true
+    rm -rf /var/lib/etcd/default
+fi
 
 # Generate etcd TLS certificates
 ETCD_SSL_DIR="/etc/etcd/ssl"
@@ -190,14 +253,26 @@ echo "=============================================="
 systemctl stop postgresql 2>/dev/null || true
 systemctl disable postgresql 2>/dev/null || true
 
-# Handle data directory
-if [ "$NODE_NUM" -eq 1 ]; then
-    echo ""
-    echo "This is Node 1 — it will become the initial primary."
-    echo "If you have existing data, press Ctrl+C within 10 seconds."
-    sleep 10
+# Handle data directory — idempotent: only wipe if Patroni isn't already running healthily
+PATRONI_HEALTHY=false
+if systemctl is-active patroni &>/dev/null; then
+    if patronictl -c /etc/patroni/config.yml list 2>/dev/null | grep -qE 'running|streaming'; then
+        PATRONI_HEALTHY=true
+    fi
 fi
-rm -rf "${PG_DATA_DIR:?}"/*
+
+if [ "$PATRONI_HEALTHY" = true ] && [ "$FORCE" != true ]; then
+    echo "Patroni is already running healthy — preserving PG_DATA_DIR (use --force to reinitialize)."
+else
+    if [ "$NODE_NUM" -eq 1 ] && [ -d "${PG_DATA_DIR}" ] && [ -n "$(ls -A "${PG_DATA_DIR}" 2>/dev/null)" ]; then
+        echo ""
+        echo "WARNING: This is Node 1 and PG_DATA_DIR contains data."
+        echo "It will be wiped to bootstrap as the initial primary."
+        echo "If you have existing data, press Ctrl+C within 10 seconds."
+        sleep 10
+    fi
+    rm -rf "${PG_DATA_DIR:?}"/*
+fi
 
 # Generate self-signed SSL certificate for PostgreSQL
 SSL_DIR="/etc/patroni/ssl"

@@ -7,6 +7,19 @@
 
 set -euo pipefail
 
+# ---- Parse args ----
+DRY_RUN=false
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run) DRY_RUN=true ;;
+        -h|--help)
+            echo "Usage: $0 [--dry-run]"
+            echo "  --dry-run  Show what would be updated without making changes"
+            exit 0
+            ;;
+    esac
+done
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # If run from outside the repo, find it
@@ -31,12 +44,49 @@ get_version() {
 }
 
 OLD_VERSION=$(get_version)
+OLD_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "")
+
+# Rollback to the pre-pull commit if a deploy phase fails after the git pull.
+rollback_on_failure() {
+    local exit_code=$?
+    if [ "${PG_UPDATE_PHASE:-}" = "deploy" ] && [ -n "${PRE_PULL_COMMIT:-}" ] && [ "${exit_code}" -ne 0 ]; then
+        echo ""
+        echo "ERROR: Update failed (exit ${exit_code}). Rolling back to ${PRE_PULL_COMMIT}..."
+        git reset --hard "${PRE_PULL_COMMIT}" 2>/dev/null || \
+            echo "WARNING: Rollback failed. Manual recovery required: git reset --hard ${PRE_PULL_COMMIT}"
+    fi
+    exit "${exit_code}"
+}
 
 # Phase 1: pull and re-exec so the deploy phase always runs from the latest script
 if [ "${PG_UPDATE_PHASE:-}" != "deploy" ]; then
     echo "=== PostgreSQL Cluster Update ==="
     echo ""
     echo "  Current version: ${OLD_VERSION}"
+
+    if [ "${DRY_RUN}" = true ]; then
+        echo "  *** DRY-RUN MODE — no changes will be made ***"
+        echo ""
+        echo "  Fetching origin to compare..."
+        git fetch origin --tags -f &>/dev/null || true
+        REMOTE_COMMIT=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
+        echo "  Local HEAD:  ${OLD_COMMIT}"
+        echo "  Remote main: ${REMOTE_COMMIT}"
+        if [ "${OLD_COMMIT}" = "${REMOTE_COMMIT}" ]; then
+            echo "  Already up to date — no changes would be applied."
+        else
+            echo ""
+            echo "  Commits that would be pulled:"
+            git log --oneline "${OLD_COMMIT}..${REMOTE_COMMIT}" 2>/dev/null | head -20 || echo "  (unable to list)"
+            echo ""
+            echo "  Files that would change:"
+            git diff --stat "${OLD_COMMIT}..${REMOTE_COMMIT}" 2>/dev/null | tail -20 || echo "  (unable to diff)"
+        fi
+        echo ""
+        echo "  Re-run without --dry-run to apply."
+        exit 0
+    fi
+
     echo "  Pulling latest from GitHub..."
     echo ""
 
@@ -44,8 +94,11 @@ if [ "${PG_UPDATE_PHASE:-}" != "deploy" ]; then
     git pull origin main
 
     # Re-exec the freshly pulled script for the deploy phase
-    PG_UPDATE_PHASE=deploy OLD_VERSION="${OLD_VERSION}" exec bash "$0" "$@"
+    PG_UPDATE_PHASE=deploy OLD_VERSION="${OLD_VERSION}" PRE_PULL_COMMIT="${OLD_COMMIT}" exec bash "$0" "$@"
 fi
+
+# Deploy phase: install rollback trap so failures revert the pull.
+trap rollback_on_failure EXIT
 
 # Phase 2: deploy (always runs from the latest version of this script)
 NEW_VERSION=$(get_version)
@@ -170,3 +223,6 @@ if [ "${PG_DASHBOARD_UPGRADE:-}" != "1" ]; then
     echo "  Restarting pg-monitor..."
     systemctl restart pg-monitor 2>/dev/null || true
 fi
+
+# Update succeeded — disarm the rollback trap.
+trap - EXIT

@@ -8,6 +8,70 @@ BASE_DIR="$(dirname "$SCRIPT_DIR")"
 CONF_FILE="${BASE_DIR}/cluster.conf"
 TEMPLATES_DIR="${BASE_DIR}/templates"
 
+# Validate that required fields exist in cluster.conf
+# Fails fast with a clear error if anything is missing or malformed.
+validate_config() {
+    local errors=0
+    local required=(
+        CLUSTER_NAME NODE_COUNT
+        PG_VERSION PG_PORT PG_DATA_DIR PG_BIN_DIR PG_MAX_CONN PG_HBA_SUBNET
+        PG_SUPERUSER_PASS PG_REPLICATOR_PASS PG_ADMIN_PASS
+        ETCD_TOKEN ENABLE_VIP
+    )
+
+    for var in "${required[@]}"; do
+        if [ -z "${!var:-}" ]; then
+            echo "ERROR: ${var} is not set in cluster.conf" >&2
+            errors=$((errors + 1))
+        fi
+    done
+
+    # NODE_COUNT must be numeric and >= 1
+    if [ -n "${NODE_COUNT:-}" ] && ! [[ "${NODE_COUNT}" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: NODE_COUNT must be a number, got '${NODE_COUNT}'" >&2
+        errors=$((errors + 1))
+    elif [ -n "${NODE_COUNT:-}" ] && [ "${NODE_COUNT}" -lt 1 ]; then
+        echo "ERROR: NODE_COUNT must be at least 1, got '${NODE_COUNT}'" >&2
+        errors=$((errors + 1))
+    fi
+
+    # Per-node IP/name fields must exist
+    if [ -n "${NODE_COUNT:-}" ] && [[ "${NODE_COUNT}" =~ ^[0-9]+$ ]]; then
+        for i in $(seq 1 "${NODE_COUNT}"); do
+            local ip_var="NODE_${i}_IP"
+            local name_var="NODE_${i}_NAME"
+            if [ -z "${!ip_var:-}" ]; then
+                echo "ERROR: ${ip_var} is not set in cluster.conf" >&2
+                errors=$((errors + 1))
+            elif ! [[ "${!ip_var}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "ERROR: ${ip_var}='${!ip_var}' is not a valid IPv4 address" >&2
+                errors=$((errors + 1))
+            fi
+            if [ -z "${!name_var:-}" ]; then
+                echo "ERROR: ${name_var} is not set in cluster.conf" >&2
+                errors=$((errors + 1))
+            fi
+        done
+    fi
+
+    # If VIP enabled, VIP fields must be set
+    if [[ "${ENABLE_VIP:-}" == "Y" || "${ENABLE_VIP:-}" == "y" ]]; then
+        for var in VIP_ADDRESS VIP_INTERFACE; do
+            if [ -z "${!var:-}" ]; then
+                echo "ERROR: ${var} is required when ENABLE_VIP=Y" >&2
+                errors=$((errors + 1))
+            fi
+        done
+    fi
+
+    if [ "${errors}" -gt 0 ]; then
+        echo "" >&2
+        echo "cluster.conf failed validation with ${errors} error(s)." >&2
+        echo "Re-run ./configure.sh to regenerate the file." >&2
+        exit 1
+    fi
+}
+
 # Load cluster config
 load_config() {
     if [ ! -f "${CONF_FILE}" ]; then
@@ -17,6 +81,7 @@ load_config() {
     fi
     # shellcheck disable=SC1090
     source "${CONF_FILE}"
+    validate_config
 }
 
 # Get node variable by index (1-based)

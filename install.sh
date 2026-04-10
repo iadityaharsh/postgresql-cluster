@@ -23,6 +23,14 @@ if [ -d "${DIR}" ]; then
     if [ -f "cluster.conf" ]; then
         echo "Existing cluster.conf found."
 
+        # Validate the config matches the schema the scripts expect
+        if ! bash -c 'source scripts/common.sh && load_config' &>/dev/null; then
+            echo ""
+            echo "WARNING: cluster.conf failed validation. Details:"
+            bash -c 'source scripts/common.sh && load_config' || true
+            echo ""
+        fi
+
         # Add MONITOR_PORT if missing
         if ! grep -q '^MONITOR_PORT=' cluster.conf 2>/dev/null; then
             echo "" >> cluster.conf
