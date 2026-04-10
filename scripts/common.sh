@@ -28,7 +28,7 @@ get_etcd_endpoints() {
     local endpoints=""
     for i in $(seq 1 "${NODE_COUNT}"); do
         [ -n "${endpoints}" ] && endpoints="${endpoints},"
-        endpoints="${endpoints}http://$(get_node_ip "$i"):2379"
+        endpoints="${endpoints}https://$(get_node_ip "$i"):2379"
     done
     echo "${endpoints}"
 }
@@ -36,7 +36,7 @@ get_etcd_endpoints() {
 # Build YAML list of etcd hosts for Patroni etcd3 config (host:port format)
 get_etcd3_host_list() {
     for i in $(seq 1 "${NODE_COUNT}"); do
-        echo "    - $(get_node_ip "$i"):2379"
+        echo "    - https://$(get_node_ip "$i"):2379"
     done
 }
 
@@ -45,7 +45,7 @@ get_etcd_initial_cluster() {
     local cluster=""
     for i in $(seq 1 "${NODE_COUNT}"); do
         [ -n "${cluster}" ] && cluster="${cluster},"
-        cluster="${cluster}etcd${i}=http://$(get_node_ip "$i"):2380"
+        cluster="${cluster}etcd${i}=https://$(get_node_ip "$i"):2380"
     done
     echo "${cluster}"
 }
@@ -130,6 +130,8 @@ process_template() {
         -e "s|{{ETCD_ENDPOINTS}}|$(get_etcd_endpoints)|g" \
         -e "s|{{ETCD_INITIAL_CLUSTER}}|$(get_etcd_initial_cluster)|g" \
         -e "s|{{DASHBOARD_IP}}|${DASHBOARD_IP:-}|g" \
+        -e "s|{{PATRONI_API_USER}}|${PATRONI_API_USER:-patroni}|g" \
+        -e "s|{{PATRONI_API_PASS}}|${PATRONI_API_PASS:-}|g" \
     )
 
     # Node-specific replacements

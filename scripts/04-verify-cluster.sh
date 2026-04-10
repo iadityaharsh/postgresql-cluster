@@ -15,13 +15,19 @@ echo "  PostgreSQL Patroni Cluster Health Check"
 echo "  Cluster: ${CLUSTER_NAME}"
 echo "=========================================="
 
+ETCD_CACERT="/etc/etcd/ssl/ca.crt"
+ETCD_TLS_ARGS=()
+if [ -f "${ETCD_CACERT}" ]; then
+    ETCD_TLS_ARGS+=("--cacert=${ETCD_CACERT}")
+fi
+
 echo ""
 echo "--- etcd cluster health ---"
-etcdctl endpoint health --endpoints="$(get_etcd_endpoints)"
+etcdctl endpoint health --endpoints="$(get_etcd_endpoints)" "${ETCD_TLS_ARGS[@]}"
 
 echo ""
 echo "--- etcd member list ---"
-etcdctl member list --endpoints="http://$(get_node_ip 1):2379"
+etcdctl member list --endpoints="https://$(get_node_ip 1):2379" "${ETCD_TLS_ARGS[@]}"
 
 echo ""
 echo "--- Patroni cluster status ---"

@@ -231,6 +231,10 @@ AUTHEOF
 chmod 600 "${AUTH_FILE}"
 echo "  Dashboard credentials saved to auth.json"
 
+# ----- Patroni REST API credentials -----
+PATRONI_API_USER="patroni"
+PATRONI_API_PASS=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+
 # ----- etcd token -----
 ETCD_TOKEN=$(openssl rand -hex 8)
 
@@ -278,6 +282,10 @@ PG_SUPERUSER_PASS="${PG_SUPERUSER_PASS}"
 PG_REPLICATOR_PASS="${PG_REPLICATOR_PASS}"
 PG_ADMIN_PASS="${PG_ADMIN_PASS}"
 
+# --- Patroni REST API ---
+PATRONI_API_USER="${PATRONI_API_USER}"
+PATRONI_API_PASS="${PATRONI_API_PASS}"
+
 # --- Monitoring ---
 MONITOR_PORT="${MONITOR_PORT}"
 
@@ -285,6 +293,7 @@ MONITOR_PORT="${MONITOR_PORT}"
 ENABLE_BACKUP="n"
 BACKUP_SCHEDULE="0 2 * * *"
 BACKUP_LOCAL_RETENTION="7"
+BORG_PASSPHRASE="$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)"
 NFS_SERVER=""
 NFS_PATH=""
 EOF

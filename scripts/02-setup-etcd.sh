@@ -35,4 +35,10 @@ systemctl start etcd
 echo "=== etcd started on ${NODE_NAME} ==="
 echo "Checking health..."
 sleep 3
-etcdctl endpoint health || echo "Note: etcd may take a moment to elect a leader when starting the cluster"
+ETCD_CACERT="/etc/etcd/ssl/ca.crt"
+ETCD_HEALTH_ARGS=(endpoint health --endpoints="https://127.0.0.1:2379")
+if [ -f "${ETCD_CACERT}" ]; then
+    ETCD_HEALTH_ARGS+=("--cacert=${ETCD_CACERT}")
+fi
+etcdctl "${ETCD_HEALTH_ARGS[@]}" \
+    || echo "Note: etcd may take a moment to elect a leader when starting the cluster"

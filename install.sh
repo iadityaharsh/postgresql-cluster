@@ -31,6 +31,23 @@ if [ -d "${DIR}" ]; then
             echo "Added MONITOR_PORT=8080 to cluster.conf"
         fi
 
+        # Add PATRONI_API credentials if missing
+        if ! grep -q '^PATRONI_API_USER=' cluster.conf 2>/dev/null; then
+            PATRONI_API_PASS_GEN=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
+            echo "" >> cluster.conf
+            echo "# --- Patroni REST API ---" >> cluster.conf
+            echo 'PATRONI_API_USER="patroni"' >> cluster.conf
+            echo "PATRONI_API_PASS=\"${PATRONI_API_PASS_GEN}\"" >> cluster.conf
+            echo "Added Patroni REST API credentials to cluster.conf"
+        fi
+
+        # Add BORG_PASSPHRASE if missing
+        if ! grep -q '^BORG_PASSPHRASE=' cluster.conf 2>/dev/null; then
+            BORG_PASS_GEN=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+            echo "BORG_PASSPHRASE=\"${BORG_PASS_GEN}\"" >> cluster.conf
+            echo "Added BORG_PASSPHRASE to cluster.conf"
+        fi
+
         # Migrate SMB to NFS fields
         if grep -q 'SMB_SHARE\|SMB_USER\|SMB_PASS\|SMB_DOMAIN\|SMB_RETENTION' cluster.conf 2>/dev/null; then
             echo "Removing old SMB fields from cluster.conf..."

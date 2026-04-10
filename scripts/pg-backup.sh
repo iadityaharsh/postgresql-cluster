@@ -38,11 +38,15 @@ log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $1" | tee -a "${LOG_FILE}"; }
 LEADER_IP=""
 LEADER_NAME=""
 THIS_HOSTNAME=$(hostname)
-for i in $(seq 1 ${NODE_COUNT:-3}); do
+for i in $(seq 1 "${NODE_COUNT:-3}"); do
     NODE_IP_VAR="NODE_${i}_IP"
     NODE_IP="${!NODE_IP_VAR:-}"
     [ -z "${NODE_IP}" ] && continue
-    CLUSTER_JSON=$(curl -sf "http://${NODE_IP}:8008/cluster" 2>/dev/null || true)
+    CURL_ARGS=(-sf)
+    if [ -n "${PATRONI_API_USER:-}" ] && [ -n "${PATRONI_API_PASS:-}" ]; then
+        CURL_ARGS+=(-u "${PATRONI_API_USER}:${PATRONI_API_PASS}")
+    fi
+    CLUSTER_JSON=$(curl "${CURL_ARGS[@]}" "http://${NODE_IP}:8008/cluster" 2>/dev/null || true)
     if [ -n "${CLUSTER_JSON}" ]; then
         LEADER_NAME=$(echo "${CLUSTER_JSON}" | python3 -c "import sys,json; members=json.load(sys.stdin).get('members',[]); print(next((m['name'] for m in members if m.get('role')=='leader'),''))" 2>/dev/null || true)
         LEADER_IP=$(echo "${CLUSTER_JSON}" | python3 -c "import sys,json; members=json.load(sys.stdin).get('members',[]); leader=[m for m in members if m.get('role')=='leader']; print(leader[0]['host'] if leader else '')" 2>/dev/null || true)
@@ -73,10 +77,10 @@ fi
 # Initialize Borg repo if needed
 if [ ! -d "${BORG_REPO}" ]; then
     log "Initializing Borg repository..."
-    BORG_PASSPHRASE="" borg init --encryption=none "${BORG_REPO}"
+    borg init --encryption=repokey-blake2 "${BORG_REPO}"
 fi
 
-export BORG_PASSPHRASE=""
+export BORG_PASSPHRASE="${BORG_PASSPHRASE:-}"
 export BORG_REPO
 
 ARCHIVE_NAME="${CLUSTER_NAME}-$(date '+%Y-%m-%d_%H%M%S')"
@@ -99,7 +103,7 @@ if [ "${DUMP_SIZE}" -lt 100 ]; then
     exit 1
 fi
 
-log "Dump complete ($(numfmt --to=iec ${DUMP_SIZE})). Archiving to Borg..."
+log "Dump complete ($(numfmt --to=iec "${DUMP_SIZE}")). Archiving to Borg..."
 borg create \
     --stdin-name "pg_dumpall.sql" \
     --compression zstd,6 \

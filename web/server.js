@@ -48,6 +48,8 @@ const PG_PORT = conf.PG_PORT || '5432';
 const PG_PASS = conf.PG_SUPERUSER_PASS || '';
 const CLUSTER_NAME = conf.CLUSTER_NAME || 'pg-cluster';
 const VIP = conf.VIP_ADDRESS || '';
+const PATRONI_API_USER = conf.PATRONI_API_USER || '';
+const PATRONI_API_PASS = conf.PATRONI_API_PASS || '';
 const BORG_REPO = '/mnt/pg-backup/borg-repo';
 const BACKUP_SCRIPT = '/opt/pg-backup/pg-backup.sh';
 
@@ -188,10 +190,12 @@ setInterval(() => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Fetch JSON from a URL with timeout
-function fetchJSON(url, timeout = 3000) {
+// Fetch JSON from a URL with timeout and optional basic auth
+function fetchJSON(url, timeout = 3000, auth) {
+  const opts = { timeout };
+  if (auth) opts.headers = { 'Authorization': 'Basic ' + Buffer.from(`${auth.user}:${auth.pass}`).toString('base64') };
   return new Promise((resolve, reject) => {
-    const req = http.get(url, { timeout }, res => {
+    const req = http.get(url, opts, res => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
@@ -207,17 +211,20 @@ function fetchJSON(url, timeout = 3000) {
 // GET /api/cluster — full cluster status from Patroni
 app.get('/api/cluster', async (req, res) => {
   try {
+    // Patroni REST API auth (if configured)
+    const pAuth = PATRONI_API_USER ? { user: PATRONI_API_USER, pass: PATRONI_API_PASS } : undefined;
+
     // Try each node's Patroni API until one responds
     let cluster = null;
     for (const node of nodes) {
-      cluster = await fetchJSON(`http://${node.ip}:8008/cluster`);
+      cluster = await fetchJSON(`http://${node.ip}:8008/cluster`, 3000, pAuth);
       if (cluster) break;
     }
 
     // Get individual node status from each Patroni
     const nodeStatuses = await Promise.all(
       nodes.map(async node => {
-        const status = await fetchJSON(`http://${node.ip}:8008/patroni`);
+        const status = await fetchJSON(`http://${node.ip}:8008/patroni`, 3000, pAuth);
         return {
           name: node.name,
           ip: node.ip,
@@ -245,9 +252,10 @@ app.post('/api/cluster/switchover', async (req, res) => {
 
   try {
     // Find current leader from Patroni
+    const pAuth = PATRONI_API_USER ? { user: PATRONI_API_USER, pass: PATRONI_API_PASS } : undefined;
     let cluster = null;
     for (const node of nodes) {
-      cluster = await fetchJSON(`http://${node.ip}:8008/cluster`);
+      cluster = await fetchJSON(`http://${node.ip}:8008/cluster`, 3000, pAuth);
       if (cluster) break;
     }
     if (!cluster || !cluster.members) {
@@ -277,13 +285,15 @@ app.post('/api/cluster/switchover', async (req, res) => {
     }
 
     const postData = JSON.stringify({ leader: leader.name, candidate: targetName });
+    const switchHeaders = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) };
+    if (PATRONI_API_USER) switchHeaders['Authorization'] = 'Basic ' + Buffer.from(`${PATRONI_API_USER}:${PATRONI_API_PASS}`).toString('base64');
     const switchRes = await new Promise((resolve, reject) => {
       const req = http.request({
         hostname: leaderNode.ip,
         port: 8008,
         path: '/switchover',
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) },
+        headers: switchHeaders,
         timeout: 15000
       }, (resp) => {
         let body = '';
@@ -437,7 +447,7 @@ app.get('/api/config', (req, res) => {
 app.get('/api/config/export', (req, res) => {
   if (!fs.existsSync(confPath)) return res.status(404).json({ error: 'cluster.conf not found' });
   const content = fs.readFileSync(confPath, 'utf8');
-  const redacted = content.replace(/^(PG_REPL_PASS|PG_ADMIN_PASS|SMB_PASS)="[^"]*"/gm, '$1="***REDACTED***"');
+  const redacted = content.replace(/^(PG_REPL_PASS|PG_ADMIN_PASS|PG_SUPERUSER_PASS|PG_REPLICATOR_PASS|SMB_PASS|BORG_PASSPHRASE|PATRONI_API_PASS|CLOUDFLARE_API_TOKEN|TUNNEL_TOKEN)="[^"]*"/gm, '$1="***REDACTED***"');
 
   let output = redacted;
   // Append auth config (username + hash, password not recoverable)
@@ -461,10 +471,12 @@ app.get('/api/config/export', (req, res) => {
 // GET /api/config/patroni — export patroni config from all nodes
 app.get('/api/config/patroni', async (req, res) => {
   const configs = {};
+  const pOpts = { timeout: 5000 };
+  if (PATRONI_API_USER) pOpts.headers = { 'Authorization': 'Basic ' + Buffer.from(`${PATRONI_API_USER}:${PATRONI_API_PASS}`).toString('base64') };
   for (const node of nodes) {
     try {
       const resp = await new Promise((resolve, reject) => {
-        const r = http.get(`http://${node.ip}:8008/config`, { timeout: 5000 }, resolve);
+        const r = http.get(`http://${node.ip}:8008/config`, pOpts, resolve);
         r.on('error', reject);
         r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
       });
@@ -825,7 +837,7 @@ app.get('/api/restart/status', (req, res) => {
 // Helper: run borg command and return stdout
 function runBorg(args, timeout = 15000) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, BORG_PASSPHRASE: '', BORG_REPO };
+    const env = { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '', BORG_REPO };
     execFile('borg', args, { env, timeout }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr || err.message));
       else resolve(stdout);
@@ -871,7 +883,7 @@ app.post('/api/backups', (req, res) => {
   backupTask.log.push(`[${new Date().toLocaleTimeString()}] Executing: ${BACKUP_SCRIPT}`);
 
   const child = spawn('bash', [BACKUP_SCRIPT], {
-    env: { ...process.env, BORG_PASSPHRASE: '' },
+    env: { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
@@ -951,7 +963,7 @@ app.post('/api/backups/restore', (req, res) => {
   restoreTask.log.push(`[${new Date().toLocaleTimeString()}] Starting restore of "${archive}"...`);
   restoreTask.log.push(`[${new Date().toLocaleTimeString()}] Target: ${host}:${PG_PORT}`);
 
-  const env = { ...process.env, BORG_PASSPHRASE: '', PGPASSWORD: PG_PASS };
+  const env = { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '', PGPASSWORD: PG_PASS };
   const borgExtract = spawn('borg', ['extract', '--stdout', `${BORG_REPO}::${archive}`], { env });
   const psqlRestore = spawn('psql', ['-h', host, '-p', PG_PORT, '-U', 'postgres', '-f', '-'], { env });
 
@@ -2209,6 +2221,28 @@ app.delete('/api/hyperdrive/:key', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Cluster monitor running at http://0.0.0.0:${PORT}`);
-});
+// Try HTTPS first using existing SSL certs, fall back to HTTP
+const SSL_CERT_PATHS = [
+  { cert: '/etc/patroni/ssl/server.crt', key: '/etc/patroni/ssl/server.key' },
+  { cert: path.resolve(__dirname, 'ssl', 'server.crt'), key: path.resolve(__dirname, 'ssl', 'server.key') }
+];
+
+let sslOpts = null;
+for (const { cert, key } of SSL_CERT_PATHS) {
+  if (fs.existsSync(cert) && fs.existsSync(key)) {
+    try {
+      sslOpts = { cert: fs.readFileSync(cert), key: fs.readFileSync(key) };
+      break;
+    } catch { /* skip if unreadable */ }
+  }
+}
+
+if (sslOpts) {
+  https.createServer(sslOpts, app).listen(PORT, '0.0.0.0', () => {
+    console.log(`Cluster monitor running at https://0.0.0.0:${PORT} (TLS)`);
+  });
+} else {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Cluster monitor running at http://0.0.0.0:${PORT}`);
+  });
+}

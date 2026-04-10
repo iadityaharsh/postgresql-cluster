@@ -140,12 +140,23 @@ fi
 if mountpoint -q "${MOUNT_POINT}"; then
     echo "${STORAGE_TYPE^^} share mounted at ${MOUNT_POINT}"
 
-    # Initialize Borg repo
+    # Initialize Borg repo with encryption
     BORG_REPO="${MOUNT_POINT}/borg-repo"
+    export BORG_PASSPHRASE="${BORG_PASSPHRASE:-}"
     if [ ! -d "${BORG_REPO}" ]; then
-        echo "Initializing Borg repository..."
-        BORG_PASSPHRASE="" borg init --encryption=none "${BORG_REPO}"
+        echo "Initializing Borg repository (encrypted with repokey-blake2)..."
+        borg init --encryption=repokey-blake2 "${BORG_REPO}"
         echo "Borg repo created at ${BORG_REPO}"
+
+        # Export the encryption key for safekeeping
+        BORG_KEY_EXPORT="/opt/pg-backup/borg-key-export.txt"
+        mkdir -p /opt/pg-backup
+        borg key export "${BORG_REPO}" "${BORG_KEY_EXPORT}" 2>/dev/null || true
+        chmod 600 "${BORG_KEY_EXPORT}"
+        echo ""
+        echo "IMPORTANT: Borg encryption key exported to ${BORG_KEY_EXPORT}"
+        echo "  Back up this file to a secure location — without it AND the"
+        echo "  passphrase (in cluster.conf), backups cannot be restored."
     else
         echo "Borg repo already exists at ${BORG_REPO}"
     fi
@@ -183,5 +194,6 @@ echo "  Schedule:   ${CRON_SCHEDULE}"
 echo "  Log:        /var/log/pg-backup.log"
 echo ""
 echo "  Manual backup:  /opt/pg-backup/pg-backup.sh"
-echo "  List backups:   BORG_PASSPHRASE='' borg list ${MOUNT_POINT}/borg-repo"
-echo "  Restore:        BORG_PASSPHRASE='' borg extract --stdout ${MOUNT_POINT}/borg-repo::ARCHIVE | psql -h VIP -U postgres"
+echo "  List backups:   borg list ${MOUNT_POINT}/borg-repo"
+echo "  Restore:        borg extract --stdout ${MOUNT_POINT}/borg-repo::ARCHIVE | psql -h VIP -U postgres"
+echo "  Note: Set BORG_PASSPHRASE from cluster.conf before running borg commands manually."

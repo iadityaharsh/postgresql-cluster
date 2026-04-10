@@ -5,6 +5,9 @@ name: {{NODE_NAME}}
 restapi:
   listen: {{NODE_IP}}:8008
   connect_address: {{NODE_IP}}:8008
+  authentication:
+    username: {{PATRONI_API_USER}}
+    password: {{PATRONI_API_PASS}}
 
 etcd3:
   hosts:

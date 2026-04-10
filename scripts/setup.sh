@@ -48,6 +48,69 @@ systemctl stop etcd 2>/dev/null || true
 # Clear old etcd data for fresh cluster bootstrap
 rm -rf /var/lib/etcd/default
 
+# Generate etcd TLS certificates
+ETCD_SSL_DIR="/etc/etcd/ssl"
+mkdir -p "$ETCD_SSL_DIR"
+
+# Generate CA if not present (Node 1 generates, others receive via scp)
+if [ ! -f "$ETCD_SSL_DIR/ca.crt" ]; then
+    if [ "$NODE_NUM" -eq 1 ]; then
+        echo "Generating etcd CA certificate..."
+        openssl req -new -x509 -days 3650 -nodes \
+            -out "$ETCD_SSL_DIR/ca.crt" \
+            -keyout "$ETCD_SSL_DIR/ca.key" \
+            -subj "/CN=etcd-ca/O=${CLUSTER_NAME}" \
+            2>/dev/null
+        chmod 600 "$ETCD_SSL_DIR/ca.key"
+        echo "etcd CA generated. Copy to all nodes:"
+        echo "  scp $ETCD_SSL_DIR/ca.crt $ETCD_SSL_DIR/ca.key root@<NODE_IP>:$ETCD_SSL_DIR/"
+    else
+        echo "WARNING: etcd CA not found at $ETCD_SSL_DIR/ca.crt"
+        echo "Copy CA from Node 1: scp root@<NODE1_IP>:$ETCD_SSL_DIR/ca.{crt,key} $ETCD_SSL_DIR/"
+    fi
+fi
+
+# Generate server and peer certs signed by CA
+if [ -f "$ETCD_SSL_DIR/ca.key" ]; then
+    for CERT_TYPE in server peer; do
+        if [ ! -f "$ETCD_SSL_DIR/${CERT_TYPE}.crt" ]; then
+            echo "Generating etcd ${CERT_TYPE} certificate..."
+            openssl req -new -nodes \
+                -out "$ETCD_SSL_DIR/${CERT_TYPE}.csr" \
+                -keyout "$ETCD_SSL_DIR/${CERT_TYPE}.key" \
+                -subj "/CN=etcd-${CERT_TYPE}/O=${CLUSTER_NAME}" \
+                2>/dev/null
+
+            # Create SAN config for the cert
+            cat > "$ETCD_SSL_DIR/${CERT_TYPE}-san.cnf" << SANCNF
+[v3_req]
+subjectAltName = @alt_names
+[alt_names]
+IP.1 = ${NODE_IP}
+IP.2 = 127.0.0.1
+DNS.1 = ${NODE_NAME}
+DNS.2 = localhost
+SANCNF
+
+            openssl x509 -req -days 3650 \
+                -in "$ETCD_SSL_DIR/${CERT_TYPE}.csr" \
+                -CA "$ETCD_SSL_DIR/ca.crt" \
+                -CAkey "$ETCD_SSL_DIR/ca.key" \
+                -CAcreateserial \
+                -out "$ETCD_SSL_DIR/${CERT_TYPE}.crt" \
+                -extensions v3_req \
+                -extfile "$ETCD_SSL_DIR/${CERT_TYPE}-san.cnf" \
+                2>/dev/null
+            rm -f "$ETCD_SSL_DIR/${CERT_TYPE}.csr" "$ETCD_SSL_DIR/${CERT_TYPE}-san.cnf"
+            chmod 600 "$ETCD_SSL_DIR/${CERT_TYPE}.key"
+            echo "etcd ${CERT_TYPE} certificate generated."
+        fi
+    done
+fi
+
+# Fix ownership for etcd user
+chown -R etcd:etcd "$ETCD_SSL_DIR"
+
 # Create etcd systemd service if not present (needed for GitHub release installs)
 if [ ! -f /etc/systemd/system/etcd.service ] && [ ! -f /lib/systemd/system/etcd.service ]; then
     cat > /etc/systemd/system/etcd.service << 'EOF'
@@ -91,8 +154,13 @@ systemctl start etcd || true
 
 echo "Waiting for etcd cluster to become healthy..."
 ETCD_READY=false
+ETCD_CACERT="${ETCD_SSL_DIR}/ca.crt"
+ETCD_HEALTH_ARGS=(endpoint health --endpoints="https://127.0.0.1:2379")
+if [ -f "${ETCD_CACERT}" ]; then
+    ETCD_HEALTH_ARGS+=("--cacert=${ETCD_CACERT}")
+fi
 for attempt in $(seq 1 30); do
-    if etcdctl endpoint health --endpoints="http://127.0.0.1:2379" &>/dev/null; then
+    if etcdctl "${ETCD_HEALTH_ARGS[@]}" &>/dev/null; then
         ETCD_READY=true
         break
     fi
@@ -129,12 +197,21 @@ if [ "$NODE_NUM" -eq 1 ]; then
     echo "If you have existing data, press Ctrl+C within 10 seconds."
     sleep 10
 fi
-rm -rf "${PG_DATA_DIR}"/*
+rm -rf "${PG_DATA_DIR:?}"/*
 
 # Generate self-signed SSL certificate for PostgreSQL
 SSL_DIR="/etc/patroni/ssl"
 mkdir -p "$SSL_DIR"
+REGEN_CERT=false
 if [ ! -f "$SSL_DIR/server.crt" ] || [ ! -f "$SSL_DIR/server.key" ]; then
+    REGEN_CERT=true
+elif openssl x509 -checkend $((30 * 86400)) -noout -in "$SSL_DIR/server.crt" &>/dev/null; then
+    echo "SSL certificate exists and is valid for >30 days at $SSL_DIR/"
+else
+    echo "SSL certificate is expiring within 30 days — regenerating..."
+    REGEN_CERT=true
+fi
+if [ "$REGEN_CERT" = true ]; then
     echo "Generating self-signed SSL certificate for PostgreSQL..."
     openssl req -new -x509 -days 3650 -nodes \
         -out "$SSL_DIR/server.crt" \
@@ -145,8 +222,6 @@ if [ ! -f "$SSL_DIR/server.crt" ] || [ ! -f "$SSL_DIR/server.key" ]; then
     chmod 644 "$SSL_DIR/server.crt"
     chown -R postgres:postgres "$SSL_DIR"
     echo "SSL certificate generated at $SSL_DIR/"
-else
-    echo "SSL certificate already exists at $SSL_DIR/"
 fi
 
 # Generate Patroni config

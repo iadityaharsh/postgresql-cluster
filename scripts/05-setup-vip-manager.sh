@@ -57,7 +57,7 @@ trigger-value: "${NODE_NAME}"
 
 dcs-type: etcd
 dcs-endpoints:
-$(for i in $(seq 1 "${NODE_COUNT}"); do echo "  - http://$(get_node_ip "$i"):2379"; done)
+$(for i in $(seq 1 "${NODE_COUNT}"); do echo "  - https://$(get_node_ip "$i"):2379"; done)
 
 hosting-type: basic
 retry-after: 2
