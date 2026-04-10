@@ -110,7 +110,7 @@ function parseCookies(header) {
 }
 
 // Internal node-to-node endpoints that skip auth
-const INTERNAL_PATHS = ['/api/tunnel/local', '/api/system/local', '/api/version', '/api/restart/local', '/api/restart/monitor',
+const INTERNAL_PATHS = ['/healthz', '/api/tunnel/local', '/api/system/local', '/api/version', '/api/restart/local', '/api/restart/monitor',
   '/api/tunnel/apply', '/api/tunnel/setup', '/api/storage/apply', '/api/version/upgrade/apply', '/api/login', '/api/auth/status'];
 
 app.use((req, res, next) => {
@@ -187,6 +187,19 @@ setInterval(() => {
     if (now - session.created > maxAge) sessions.delete(token);
   }
 }, 60 * 60 * 1000);
+
+// GET /healthz — service health check (no auth required)
+app.get('/healthz', async (req, res) => {
+  const status = { status: 'ok', timestamp: Date.now(), uptime: process.uptime() };
+  try {
+    const pAuth = PATRONI_API_USER ? { user: PATRONI_API_USER, pass: PATRONI_API_PASS } : undefined;
+    const cluster = await fetchJSON(`http://${nodes[0].ip}:8008/cluster`, 2000, pAuth);
+    status.patroni = cluster ? 'reachable' : 'unreachable';
+  } catch {
+    status.patroni = 'unreachable';
+  }
+  res.json(status);
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -2221,6 +2234,11 @@ app.delete('/api/hyperdrive/:key', async (req, res) => {
   }
 });
 
+// Export for testing
+module.exports = { app };
+
+// Start server (skip when imported for testing)
+if (require.main === module) {
 // Try HTTPS first using existing SSL certs, fall back to HTTP
 const SSL_CERT_PATHS = [
   { cert: '/etc/patroni/ssl/server.crt', key: '/etc/patroni/ssl/server.key' },
@@ -2246,3 +2264,4 @@ if (sslOpts) {
     console.log(`Cluster monitor running at http://0.0.0.0:${PORT}`);
   });
 }
+} // end if (require.main === module)
