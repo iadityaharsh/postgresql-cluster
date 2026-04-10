@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 load_config
 
+# shellcheck disable=SC1091
+source "$(dirname "$SCRIPT_DIR")/versions.env"
+
 echo "=== Installing packages for PostgreSQL HA cluster ==="
 
 # ----- PostgreSQL detection / installation -----
@@ -127,7 +130,6 @@ else
         echo "etcd installed from apt."
     else
         echo "etcd not available in apt repos, installing from GitHub release..."
-        ETCD_VERSION="3.5.21"
         cd /tmp
         wget -q "https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz" -O etcd.tar.gz
         tar xzf etcd.tar.gz
@@ -149,7 +151,9 @@ echo "--- Installing Patroni ---"
 apt-get install -y python3-pip python3-psycopg2 python3-venv
 
 python3 -m venv /opt/patroni
-/opt/patroni/bin/pip install psycopg2-binary patroni[etcd3]
+# Install pinned versions from requirements.txt for reproducibility.
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+/opt/patroni/bin/pip install -r "${BASE_DIR}/requirements.txt"
 
 # Create symlinks
 ln -sf /opt/patroni/bin/patroni /usr/local/bin/patroni

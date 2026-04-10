@@ -1,0 +1,7 @@
+# Pinned Python dependencies for Patroni.
+# Patches (z in x.y.z) are picked up automatically; minor/major
+# bumps require an explicit edit + re-test of cluster bootstrap.
+
+patroni[etcd3]==3.3.2
+psycopg2-binary==2.9.10
+python-etcd==0.4.5

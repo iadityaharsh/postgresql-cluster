@@ -39,6 +39,12 @@ if [ ! -f ".git/HEAD" ]; then
     exit 1
 fi
 
+# Pinned upstream binary versions (single source of truth).
+if [ -f "${SCRIPT_DIR}/versions.env" ]; then
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/versions.env"
+fi
+
 get_version() {
     git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0"
 }
@@ -154,7 +160,7 @@ fi
 if ! command -v patroni &>/dev/null; then
     echo "  Installing Patroni..."
     python3 -m venv /opt/patroni 2>/dev/null || true
-    /opt/patroni/bin/pip install psycopg2-binary patroni[etcd3] >/dev/null 2>&1
+    /opt/patroni/bin/pip install -r "${SCRIPT_DIR}/requirements.txt" >/dev/null 2>&1
     ln -sf /opt/patroni/bin/patroni /usr/local/bin/patroni
     ln -sf /opt/patroni/bin/patronictl /usr/local/bin/patronictl
 fi
@@ -163,7 +169,6 @@ fi
 if ! command -v etcd &>/dev/null; then
     echo "  Installing etcd..."
     if ! apt-get install -y -qq etcd 2>/dev/null; then
-        ETCD_VERSION="3.5.21"
         cd /tmp
         wget -q "https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz" -O etcd.tar.gz
         tar xzf etcd.tar.gz
