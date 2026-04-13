@@ -81,6 +81,10 @@ if [ ! -d "${BORG_REPO}" ]; then
 fi
 
 export BORG_PASSPHRASE="${BORG_PASSPHRASE:-}"
+if [ -z "${BORG_PASSPHRASE}" ]; then
+    log "ERROR: BORG_PASSPHRASE is empty. Cannot access encrypted Borg repo."
+    exit 1
+fi
 export BORG_REPO
 
 ARCHIVE_NAME="${CLUSTER_NAME}-$(date '+%Y-%m-%d_%H%M%S')"

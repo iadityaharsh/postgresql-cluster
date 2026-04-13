@@ -142,6 +142,12 @@ if mountpoint -q "${MOUNT_POINT}"; then
 
     # Initialize Borg repo with encryption
     BORG_REPO="${MOUNT_POINT}/borg-repo"
+    if [ -z "${BORG_PASSPHRASE:-}" ]; then
+        echo "ERROR: BORG_PASSPHRASE is empty in cluster.conf."
+        echo "Generate one with: openssl rand -base64 32"
+        echo "Then add it to cluster.conf as BORG_PASSPHRASE=\"<value>\""
+        exit 1
+    fi
     export BORG_PASSPHRASE="${BORG_PASSPHRASE:-}"
     if [ ! -d "${BORG_REPO}" ]; then
         echo "Initializing Borg repository (encrypted with repokey-blake2)..."
