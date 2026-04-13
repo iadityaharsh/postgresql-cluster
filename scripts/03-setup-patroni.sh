@@ -32,9 +32,24 @@ if [[ "$NODE_NUM" == "1" ]]; then
     echo "Waiting 10 seconds..."
     sleep 10
 else
-    echo "Clearing data directory on replica node..."
+    echo "This is a replica node."
 fi
-rm -rf "${PG_DATA_DIR}"/*
+
+if [ -d "${PG_DATA_DIR}" ] && [ -n "$(ls -A "${PG_DATA_DIR}" 2>/dev/null)" ]; then
+    if systemctl is-active patroni &>/dev/null; then
+        echo "Patroni is currently running. Stop it first or use setup.sh which handles this safely."
+        exit 1
+    fi
+    echo "WARNING: Data directory ${PG_DATA_DIR} is not empty."
+    read -rp "Wipe and reinitialize? (y/N): " WIPE_PG
+    if [[ "${WIPE_PG}" != "y" && "${WIPE_PG}" != "Y" ]]; then
+        echo "Keeping existing data."
+    else
+        rm -rf "${PG_DATA_DIR:?}"/*
+    fi
+else
+    rm -rf "${PG_DATA_DIR:?}"/* 2>/dev/null || true
+fi
 
 # Generate self-signed SSL certificate for PostgreSQL
 SSL_DIR="/etc/patroni/ssl"
