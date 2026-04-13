@@ -49,6 +49,15 @@ if [ -d "${DIR}" ]; then
             echo "Added Patroni REST API credentials to cluster.conf"
         fi
 
+        # Add INTERNAL_SECRET if missing
+        if ! grep -q '^INTERNAL_SECRET=' cluster.conf 2>/dev/null; then
+            INTERNAL_SECRET_GEN=$(openssl rand -hex 32)
+            echo "" >> cluster.conf
+            echo "# --- Internal node-to-node auth ---" >> cluster.conf
+            echo "INTERNAL_SECRET=\"${INTERNAL_SECRET_GEN}\"" >> cluster.conf
+            echo "Added INTERNAL_SECRET to cluster.conf"
+        fi
+
         # Add BORG_PASSPHRASE if missing
         if ! grep -q '^BORG_PASSPHRASE=' cluster.conf 2>/dev/null; then
             BORG_PASS_GEN=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
