@@ -232,3 +232,24 @@ TEOF
     [[ "$result" == *"netmask: 24"* ]]
     [[ "$result" != *"{{VIP_NETMASK}}"* ]]
 }
+
+# ---- templates/vip-manager.yml ----
+
+@test "vip-manager.yml renders with per-line etcd endpoints and netmask" {
+    VIP_NETMASK="24"
+    VIP_ADDRESS="10.0.0.100"
+    VIP_INTERFACE="eth0"
+    result=$(process_template "$BATS_TEST_DIRNAME/../templates/vip-manager.yml" 1)
+    # Each etcd endpoint must be on its own line with 2-space indent
+    [[ "$result" == *"  - https://10.0.0.1:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.2:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.3:2379"* ]]
+    # Netmask must be substituted
+    [[ "$result" == *"netmask: 24"* ]]
+    # VIP address must be substituted
+    [[ "$result" == *"ip: 10.0.0.100"* ]]
+    # trigger-value must be the node name
+    [[ "$result" == *"trigger-value: \"node-01\""* ]]
+    # No placeholders remain
+    [[ "$result" != *"{{"* ]]
+}
