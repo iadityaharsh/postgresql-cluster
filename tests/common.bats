@@ -276,3 +276,36 @@ TEOF
     grep -q '  certfile: /etc/patroni/ssl/server.crt' "$t"
     grep -q '  keyfile: /etc/patroni/ssl/server.key' "$t"
 }
+
+# ---- validate_config edge cases ----
+
+@test "validate_config rejects non-numeric NODE_COUNT" {
+    NODE_COUNT="abc"
+    run validate_config
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"NODE_COUNT must be a number"* ]]
+}
+
+@test "validate_config rejects invalid IP address" {
+    NODE_1_IP="not-an-ip"
+    run validate_config
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"is not a valid IPv4 address"* ]]
+}
+
+@test "validate_config rejects missing VIP fields" {
+    ENABLE_VIP="Y"
+    VIP_ADDRESS=""
+    VIP_INTERFACE=""
+    run validate_config
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"required when ENABLE_VIP=Y"* ]]
+}
+
+@test "validate_config accepts ENABLE_VIP=N" {
+    ENABLE_VIP="N"
+    VIP_ADDRESS=""
+    VIP_INTERFACE=""
+    run validate_config
+    [ "$status" -eq 0 ]
+}
