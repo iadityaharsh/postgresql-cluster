@@ -42,11 +42,11 @@ for i in $(seq 1 "${NODE_COUNT:-3}"); do
     NODE_IP_VAR="NODE_${i}_IP"
     NODE_IP="${!NODE_IP_VAR:-}"
     [ -z "${NODE_IP}" ] && continue
-    CURL_ARGS=(-s --max-time 5)
+    CURL_ARGS=(-s -k --max-time 5)
     if [ -n "${PATRONI_API_USER:-}" ] && [ -n "${PATRONI_API_PASS:-}" ]; then
         CURL_ARGS+=(-u "${PATRONI_API_USER}:${PATRONI_API_PASS}")
     fi
-    CLUSTER_JSON=$(curl "${CURL_ARGS[@]}" "http://${NODE_IP}:8008/cluster" 2>/dev/null || true)
+    CLUSTER_JSON=$(curl "${CURL_ARGS[@]}" "https://${NODE_IP}:8008/cluster" 2>/dev/null || true)
     if [ -n "${CLUSTER_JSON}" ]; then
         LEADER_NAME=$(echo "${CLUSTER_JSON}" | python3 -c "import sys,json; members=json.load(sys.stdin).get('members',[]); print(next((m['name'] for m in members if m.get('role')=='leader'),''))" 2>/dev/null || true)
         LEADER_IP=$(echo "${CLUSTER_JSON}" | python3 -c "import sys,json; members=json.load(sys.stdin).get('members',[]); leader=[m for m in members if m.get('role')=='leader']; print(leader[0]['host'] if leader else '')" 2>/dev/null || true)

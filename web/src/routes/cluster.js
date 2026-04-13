@@ -32,12 +32,12 @@ module.exports = function createClusterRouter(ctx) {
     try {
       let cluster = null;
       for (const node of nodes) {
-        cluster = await fetchJSON(`http://${node.ip}:8008/cluster`, 3000, pAuth());
+        cluster = await fetchJSON(`https://${node.ip}:8008/cluster`, 3000, pAuth());
         if (cluster) break;
       }
       const nodeStatuses = await Promise.all(
         nodes.map(async node => {
-          const status = await fetchJSON(`http://${node.ip}:8008/patroni`, 3000, pAuth());
+          const status = await fetchJSON(`https://${node.ip}:8008/patroni`, 3000, pAuth());
           return { name: node.name, ip: node.ip, patroni: status };
         })
       );
@@ -56,7 +56,7 @@ module.exports = function createClusterRouter(ctx) {
     try {
       let cluster = null;
       for (const node of nodes) {
-        cluster = await fetchJSON(`http://${node.ip}:8008/cluster`, 3000, pAuth());
+        cluster = await fetchJSON(`https://${node.ip}:8008/cluster`, 3000, pAuth());
         if (cluster) break;
       }
       if (!cluster || !cluster.members) {
@@ -77,9 +77,9 @@ module.exports = function createClusterRouter(ctx) {
       const switchHeaders = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) };
       if (PATRONI_API_USER) switchHeaders['Authorization'] = 'Basic ' + Buffer.from(`${PATRONI_API_USER}:${PATRONI_API_PASS}`).toString('base64');
       const switchRes = await new Promise((resolve, reject) => {
-        const r = http.request({
+        const r = https.request({
           hostname: leaderNode.ip, port: 8008, path: '/switchover',
-          method: 'POST', headers: switchHeaders, timeout: 15000
+          method: 'POST', headers: switchHeaders, timeout: 15000, rejectUnauthorized: false
         }, (resp) => {
           let body = '';
           resp.on('data', d => body += d);
@@ -189,12 +189,12 @@ module.exports = function createClusterRouter(ctx) {
   // GET /api/config/patroni
   router.get('/config/patroni', async (req, res) => {
     const configs = {};
-    const pOpts = { timeout: 5000 };
+    const pOpts = { timeout: 5000, rejectUnauthorized: false };
     if (PATRONI_API_USER) pOpts.headers = { 'Authorization': 'Basic ' + Buffer.from(`${PATRONI_API_USER}:${PATRONI_API_PASS}`).toString('base64') };
     for (const node of nodes) {
       try {
         const resp = await new Promise((resolve, reject) => {
-          const r = http.get(`http://${node.ip}:8008/config`, pOpts, resolve);
+          const r = https.get(`https://${node.ip}:8008/config`, pOpts, resolve);
           r.on('error', reject);
           r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
         });

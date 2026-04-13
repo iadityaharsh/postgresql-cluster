@@ -75,10 +75,11 @@ function createApp() {
   }
 
   function fetchJSON(url, timeout = 3000, auth) {
-    const opts = { timeout };
+    const opts = { timeout, rejectUnauthorized: false };
     if (auth) opts.headers = { 'Authorization': 'Basic ' + Buffer.from(`${auth.user}:${auth.pass}`).toString('base64') };
+    const lib = url.startsWith('https') ? https : http;
     return new Promise((resolve) => {
-      const req = http.get(url, opts, res => {
+      const req = lib.get(url, opts, res => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
@@ -99,7 +100,7 @@ function createApp() {
     const status = { status: 'ok', timestamp: Date.now(), uptime: process.uptime() };
     try {
       const pAuth = PATRONI_API_USER ? { user: PATRONI_API_USER, pass: PATRONI_API_PASS } : undefined;
-      const cluster = await fetchJSON(`http://${nodes[0].ip}:8008/cluster`, 2000, pAuth);
+      const cluster = await fetchJSON(`https://${nodes[0].ip}:8008/cluster`, 2000, pAuth);
       status.patroni = cluster ? 'reachable' : 'unreachable';
     } catch { status.patroni = 'unreachable'; }
     res.json(status);
