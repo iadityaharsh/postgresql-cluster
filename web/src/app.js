@@ -237,7 +237,7 @@ function createApp() {
       for (const node of otherNodes) {
         upgradeTask.log.push(`[${new Date().toLocaleTimeString()}] Upgrading ${node.ip}...`);
         await new Promise((resolve) => {
-          const r = http.request({ hostname: node.ip, port: PORT, path: '/api/version/upgrade/apply', method: 'POST', headers: { 'Content-Type': 'application/json' }, timeout: 120000 }, (resp) => {
+          const r = http.request({ hostname: node.ip, port: PORT, path: '/api/version/upgrade/apply', method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Internal-Token': conf.INTERNAL_SECRET || '' }, timeout: 120000 }, (resp) => {
             let body = ''; resp.on('data', d => body += d);
             resp.on('end', () => { try { upgradeTask.log.push(`[${new Date().toLocaleTimeString()}] ${node.ip}: ${JSON.parse(body).message || 'OK'}`); } catch { upgradeTask.log.push(`[${new Date().toLocaleTimeString()}] ${node.ip}: ${body.trim() || 'OK'}`); } resolve(true); });
           });

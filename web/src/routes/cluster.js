@@ -235,7 +235,7 @@ module.exports = function createClusterRouter(ctx) {
       restartTask.log.push(`Restarting services on ${node.name} (${node.ip})...`);
       try {
         const result = await new Promise((resolve, reject) => {
-          const r = http.request(`http://${node.ip}:${PORT}/api/restart/local`, { method: 'POST', timeout: 60000, headers: { 'Content-Type': 'application/json' } }, (resp) => {
+          const r = http.request(`http://${node.ip}:${PORT}/api/restart/local`, { method: 'POST', timeout: 60000, headers: { 'Content-Type': 'application/json', 'X-Internal-Token': conf.INTERNAL_SECRET || '' } }, (resp) => {
             let body = '';
             resp.on('data', d => body += d);
             resp.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({ results: [] }); } });
@@ -259,7 +259,7 @@ module.exports = function createClusterRouter(ctx) {
       restartTask.log.push(`Restarting pg-monitor on ${node.name}...`);
       try {
         await new Promise((resolve, reject) => {
-          const r = http.request(`http://${node.ip}:${PORT}/api/restart/monitor`, { method: 'POST', timeout: 15000, headers: { 'Content-Type': 'application/json' } }, (resp) => {
+          const r = http.request(`http://${node.ip}:${PORT}/api/restart/monitor`, { method: 'POST', timeout: 15000, headers: { 'Content-Type': 'application/json', 'X-Internal-Token': conf.INTERNAL_SECRET || '' } }, (resp) => {
             let body = '';
             resp.on('data', d => body += d);
             resp.on('end', () => resolve(body));

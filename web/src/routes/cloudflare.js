@@ -122,7 +122,7 @@ module.exports = function createCloudflareRouter(ctx) {
       task.log.push(`[${new Date().toLocaleTimeString()}] --- ${node.name} (${node.ip}) ---`);
       await new Promise((resolve) => {
         const postData = JSON.stringify({ token });
-        const r = http.request({ hostname: node.ip, port: PORT, path: '/api/tunnel/apply', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 120000 }, (resp) => {
+        const r = http.request({ hostname: node.ip, port: PORT, path: '/api/tunnel/apply', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData), 'X-Internal-Token': conf.INTERNAL_SECRET || '' }, timeout: 120000 }, (resp) => {
           let body = '';
           resp.on('data', d => body += d);
           resp.on('end', () => { task.log.push(`[${new Date().toLocaleTimeString()}] ${node.name}: ${body.trim() || 'OK'}`); resolve(); });
