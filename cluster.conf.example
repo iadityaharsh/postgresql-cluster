@@ -46,6 +46,9 @@ PG_ADMIN_PASS="replace-me"
 PATRONI_API_USER="patroni"
 PATRONI_API_PASS="replace-with-openssl-rand-base64-24"
 
+# --- Internal node-to-node auth ---
+INTERNAL_SECRET="replace-with-openssl-rand-hex-32"
+
 # --- Monitoring dashboard ---
 MONITOR_PORT="8080"
 
