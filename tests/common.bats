@@ -185,3 +185,25 @@ SEOF
     # NODE_IP should not be replaced (still has placeholder)
     [[ "$result" == *"cluster: test-cluster"* ]]
 }
+
+# ---- get_vip_etcd_endpoints ----
+
+@test "get_vip_etcd_endpoints returns YAML list with 2-space indent" {
+    result=$(get_vip_etcd_endpoints)
+    [[ "$result" == *"  - https://10.0.0.1:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.2:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.3:2379"* ]]
+    # must be 3 lines for a 3-node cluster
+    [ "$(echo "$result" | wc -l)" -eq 3 ]
+}
+
+@test "get_vip_etcd_endpoints handles single-node cluster" {
+    cat > "$TEST_DIR/cluster.conf" << 'SEOF'
+NODE_COUNT=1
+NODE_1_IP="192.168.1.1"
+SEOF
+    # shellcheck disable=SC1090
+    source "$TEST_DIR/cluster.conf"
+    result=$(get_vip_etcd_endpoints)
+    [ "$result" = "  - https://192.168.1.1:2379" ]
+}

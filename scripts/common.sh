@@ -105,6 +105,13 @@ get_etcd3_host_list() {
     done
 }
 
+# Build YAML list of etcd endpoints for vip-manager (2-space indent, not 4)
+get_vip_etcd_endpoints() {
+    for i in $(seq 1 "${NODE_COUNT}"); do
+        echo "  - https://$(get_node_ip "$i"):2379"
+    done
+}
+
 # Build etcd initial cluster string
 get_etcd_initial_cluster() {
     local cluster=""
