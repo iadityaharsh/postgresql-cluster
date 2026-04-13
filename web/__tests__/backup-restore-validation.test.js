@@ -37,3 +37,33 @@ describe('POST /api/backups/restore archive validation', () => {
     }
   });
 });
+
+describe('POST /api/backups/restore confirmation', () => {
+  test('returns warning when confirm is not set', async () => {
+    const res = await request(app)
+      .post('/api/backups/restore')
+      .send({ archive: 'valid-archive-name' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/[Cc]onfirm/);
+    expect(res.body).toHaveProperty('warning');
+  });
+
+  test('returns warning when confirm is false', async () => {
+    const res = await request(app)
+      .post('/api/backups/restore')
+      .send({ archive: 'valid-archive-name', confirm: false });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/[Cc]onfirm/);
+  });
+
+  test('proceeds when confirm is true (may fail on borg in test env)', async () => {
+    const res = await request(app)
+      .post('/api/backups/restore')
+      .send({ archive: 'valid-archive-name', confirm: true });
+    // Confirmation passes → handler proceeds → will fail on borg/psql in test env.
+    // What we test: the response is NOT a 400 with "confirm" in the error message.
+    if (res.status === 400) {
+      expect(res.body.error).not.toMatch(/[Cc]onfirm/);
+    }
+  });
+});

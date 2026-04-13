@@ -68,23 +68,106 @@ module.exports = function createBackupRouter(ctx) {
   // POST /api/backups/restore
   let restoreTask = { running: false, log: [], exitCode: null, startTime: null };
   router.post('/restore', (req, res) => {
-    const { archive } = req.body;
+    const { archive, confirm } = req.body;
     if (!archive || !/^[\w.-]+$/.test(archive)) return res.status(400).json({ error: 'Invalid archive name' });
+    if (!confirm) {
+      return res.status(400).json({
+        error: 'Restore requires explicit confirmation',
+        warning: 'This will DROP and recreate all databases on the live production cluster. A pre-restore safety backup will be created automatically. Send { archive, confirm: true } to proceed.'
+      });
+    }
     if (restoreTask.running) return res.status(409).json({ error: 'A restore is already running' });
 
     const host = VIP || nodes[0].ip;
+    const ts = () => new Date().toLocaleTimeString();
     restoreTask = { running: true, log: [], exitCode: null, startTime: new Date().toISOString() };
-    restoreTask.log.push(`[${new Date().toLocaleTimeString()}] Starting restore of "${archive}"...`);
 
-    const env = { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '', PGPASSWORD: PG_PASS };
-    const borgExtract = spawn('sudo', ['-E', 'borg', 'extract', '--stdout', `${BORG_REPO}::${archive}`], { env });
-    const psqlRestore = spawn('sudo', ['-E', 'psql', '-h', host, '-p', PG_PORT, '-U', 'postgres', '-f', '-'], { env });
-    borgExtract.stdout.pipe(psqlRestore.stdin);
-    borgExtract.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { restoreTask.log.push(`[${new Date().toLocaleTimeString()}] borg: ${line}`); }); });
-    psqlRestore.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { restoreTask.log.push(`[${new Date().toLocaleTimeString()}] psql: ${line}`); }); });
-    psqlRestore.on('close', (code) => { restoreTask.exitCode = code; restoreTask.log.push(`[${new Date().toLocaleTimeString()}] ${code === 0 ? 'TASK OK' : `TASK ERROR (exit code ${code})`}`); restoreTask.running = false; });
-    borgExtract.on('error', (err) => { restoreTask.log.push(`[${new Date().toLocaleTimeString()}] ERROR: ${err.message}`); restoreTask.exitCode = 1; restoreTask.running = false; });
-    res.json({ status: 'started', message: `Restoring ${archive}` });
+    res.json({ status: 'started', message: `Restoring ${archive} (with pre-restore safety backup)` });
+
+    (async () => {
+      const env = { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '', PGPASSWORD: PG_PASS };
+
+      // Step 1: Create a safety backup before restoring
+      restoreTask.log.push(`[${ts()}] Creating pre-restore safety backup...`);
+      const safetyName = `pre-restore-${Date.now()}`;
+
+      const safetyOk = await new Promise((resolve) => {
+        const child = spawn('sudo', ['-E', 'bash', '-c',
+          `pg_dumpall -h ${host} -p ${PG_PORT} -U postgres --clean | borg create --stdin-name pg_dumpall.sql --compression zstd,6 "${BORG_REPO}::${safetyName}" -`
+        ], { env, timeout: 600000 });
+        child.stderr.on('data', (data) => {
+          data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+            restoreTask.log.push(`[${ts()}] safety: ${line}`);
+          });
+        });
+        child.on('close', (code) => resolve(code === 0));
+        child.on('error', () => resolve(false));
+      });
+
+      if (!safetyOk) {
+        restoreTask.log.push(`[${ts()}] WARNING: Pre-restore safety backup failed. Proceeding anyway.`);
+      } else {
+        restoreTask.log.push(`[${ts()}] Safety backup created: ${safetyName}`);
+      }
+
+      // Step 2: Restore with progress reporting
+      restoreTask.log.push(`[${ts()}] Starting restore of "${archive}" to ${host}...`);
+
+      const { PassThrough } = require('stream');
+      const meter = new PassThrough();
+      let bytesProcessed = 0;
+      const progressInterval = setInterval(() => {
+        if (bytesProcessed > 0) {
+          restoreTask.log.push(`[${ts()}] Progress: ${(bytesProcessed / 1024 / 1024).toFixed(0)} MB restored`);
+        }
+      }, 15000);
+
+      const borgExtract = spawn('sudo', ['-E', 'borg', 'extract', '--stdout', `${BORG_REPO}::${archive}`], { env });
+      const psqlRestore = spawn('sudo', ['-E', 'psql', '-h', host, '-p', PG_PORT, '-U', 'postgres', '-f', '-'], { env });
+
+      meter.on('data', (chunk) => { bytesProcessed += chunk.length; });
+      borgExtract.stdout.pipe(meter).pipe(psqlRestore.stdin);
+
+      borgExtract.stderr.on('data', (data) => {
+        data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+          restoreTask.log.push(`[${ts()}] borg: ${line}`);
+        });
+      });
+      psqlRestore.stderr.on('data', (data) => {
+        data.toString().split('\n').filter(l => l.trim()).forEach(line => {
+          restoreTask.log.push(`[${ts()}] psql: ${line}`);
+        });
+      });
+
+      borgExtract.on('error', (err) => {
+        clearInterval(progressInterval);
+        psqlRestore.kill();
+        restoreTask.log.push(`[${ts()}] ERROR: borg extract failed: ${err.message}`);
+        restoreTask.exitCode = 1;
+        restoreTask.running = false;
+      });
+
+      borgExtract.on('close', (code) => {
+        if (code !== 0) {
+          clearInterval(progressInterval);
+          psqlRestore.kill();
+          restoreTask.log.push(`[${ts()}] ERROR: borg extract exited with code ${code}`);
+          restoreTask.exitCode = code;
+          restoreTask.running = false;
+        }
+      });
+
+      psqlRestore.on('close', (code) => {
+        clearInterval(progressInterval);
+        restoreTask.exitCode = code;
+        restoreTask.log.push(`[${ts()}] Restore ${code === 0 ? 'completed successfully' : `failed (exit code ${code})`}. ${(bytesProcessed / 1024 / 1024).toFixed(0)} MB total.`);
+        if (safetyOk) {
+          restoreTask.log.push(`[${ts()}] Safety backup available as: ${safetyName}`);
+        }
+        restoreTask.log.push(`[${ts()}] ${code === 0 ? 'TASK OK' : 'TASK ERROR'}`);
+        restoreTask.running = false;
+      });
+    })();
   });
 
   router.get('/restore/status', (req, res) => {
