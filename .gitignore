@@ -11,3 +11,4 @@ web/node_modules/
 web/coverage/
 *.log
 .DS_Store
+CLAUDE.md
