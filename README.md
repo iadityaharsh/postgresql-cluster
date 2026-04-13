@@ -153,6 +153,7 @@ lxc restart <container-name>
 - **[Detailed Setup](docs/SETUP.md)** — Full documentation and common operations
 - **[Remote Access](docs/remote-access.md)** — Cloudflare Tunnel (token-based HA), Access policies, Workers
 - **[Hyperdrive](docs/hyperdrive.md)** — Connect Cloudflare Workers to the cluster via Hyperdrive (edge connection pooling)
+- **[Disaster Recovery](docs/DISASTER-RECOVERY.md)** — Backup listing, integrity verification, recovery scenarios
 
 ## Contributing
 
