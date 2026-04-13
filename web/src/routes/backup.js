@@ -69,7 +69,7 @@ module.exports = function createBackupRouter(ctx) {
   let restoreTask = { running: false, log: [], exitCode: null, startTime: null };
   router.post('/restore', (req, res) => {
     const { archive } = req.body;
-    if (!archive) return res.status(400).json({ error: 'Archive name required' });
+    if (!archive || !/^[\w.-]+$/.test(archive)) return res.status(400).json({ error: 'Invalid archive name' });
     if (restoreTask.running) return res.status(409).json({ error: 'A restore is already running' });
 
     const host = VIP || nodes[0].ip;
