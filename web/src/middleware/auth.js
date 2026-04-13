@@ -14,6 +14,33 @@ function findAuthPath() {
 
 const AUTH_PATH = findAuthPath();
 
+// Resolve cluster.conf path (env override for tests, else same resolution as app.js)
+function findConfPath() {
+  if (process.env.PG_CLUSTER_CONF) return process.env.PG_CLUSTER_CONF;
+  return [
+    path.resolve(__dirname, '..', '..', 'cluster.conf'),
+    path.resolve(__dirname, '..', '..', '..', 'cluster.conf')
+  ].find(p => fs.existsSync(p)) || null;
+}
+
+function getInternalSecret() {
+  const p = findConfPath();
+  if (!p || !fs.existsSync(p)) return null;
+  const content = fs.readFileSync(p, 'utf8');
+  const match = content.match(/^INTERNAL_SECRET="?([^"\n]*)"?$/m);
+  return match ? match[1] : null;
+}
+
+function isInternalRequest(req) {
+  const token = req.headers && req.headers['x-internal-token'];
+  const secret = getInternalSecret();
+  if (!secret || !token) return false;
+  const a = Buffer.from(String(token));
+  const b = Buffer.from(String(secret));
+  if (a.length !== b.length) return false;
+  try { return crypto.timingSafeEqual(a, b); } catch { return false; }
+}
+
 function loadAuth() {
   if (!AUTH_PATH) return null;
   try { return JSON.parse(fs.readFileSync(AUTH_PATH, 'utf8')); }
@@ -87,5 +114,7 @@ module.exports = {
   verifyPassword,
   hashPassword,
   parseCookies,
-  authMiddleware
+  authMiddleware,
+  getInternalSecret,
+  isInternalRequest
 };
