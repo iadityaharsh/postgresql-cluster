@@ -6,6 +6,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(dirname "$SCRIPT_DIR")"
 CONF_FILE="${BASE_DIR}/cluster.conf"
+# shellcheck disable=SC2034
 TEMPLATES_DIR="${BASE_DIR}/templates"
 
 # Validate that required fields exist in cluster.conf

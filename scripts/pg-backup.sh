@@ -24,6 +24,7 @@ fi
 
 # Source config
 set -a
+# shellcheck source=/dev/null
 source "${CONF_FILE}"
 set +a
 

@@ -158,6 +158,7 @@ echo "[3/5] Setting up database user..."
 if [ "$SKIP_DB_SETUP" = true ]; then
     echo "Skipping DB user creation (--skip-db-setup)."
 else
+    # shellcheck disable=SC2034
     PG_PASS="${PG_SUPERUSER_PASS:-}"
 
     # Create user if it doesn't exist
