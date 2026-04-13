@@ -58,6 +58,15 @@ if [ -d "${DIR}" ]; then
             echo "Added INTERNAL_SECRET to cluster.conf"
         fi
 
+        # Add VIP_NETMASK if missing (defaults to 24)
+        if ! grep -q '^VIP_NETMASK=' cluster.conf 2>/dev/null; then
+            if grep -q '^ENABLE_VIP="[Yy]"' cluster.conf 2>/dev/null; then
+                # Insert VIP_NETMASK="24" immediately after VIP_ADDRESS line
+                sed -i '/^VIP_ADDRESS=/a VIP_NETMASK="24"' cluster.conf
+                echo "Added VIP_NETMASK=24 to cluster.conf"
+            fi
+        fi
+
         # Add BORG_PASSPHRASE if missing
         if ! grep -q '^BORG_PASSPHRASE=' cluster.conf 2>/dev/null; then
             BORG_PASS_GEN=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)

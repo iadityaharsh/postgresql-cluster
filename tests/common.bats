@@ -207,3 +207,28 @@ SEOF
     result=$(get_vip_etcd_endpoints)
     [ "$result" = "  - https://192.168.1.1:2379" ]
 }
+
+# ---- process_template: VIP_ETCD_ENDPOINTS and VIP_NETMASK ----
+
+@test "process_template substitutes VIP_ETCD_ENDPOINTS (multi-line)" {
+    cat > "$TEST_DIR/templates/vip.tmpl" << 'TEOF'
+dcs-endpoints:
+{{VIP_ETCD_ENDPOINTS}}
+TEOF
+    result=$(process_template "$TEST_DIR/templates/vip.tmpl")
+    [[ "$result" == *"  - https://10.0.0.1:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.2:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.3:2379"* ]]
+    # placeholder must be fully replaced
+    [[ "$result" != *"{{VIP_ETCD_ENDPOINTS}}"* ]]
+}
+
+@test "process_template substitutes VIP_NETMASK" {
+    VIP_NETMASK="24"
+    cat > "$TEST_DIR/templates/vip-mask.tmpl" << 'TEOF'
+netmask: {{VIP_NETMASK}}
+TEOF
+    result=$(process_template "$TEST_DIR/templates/vip-mask.tmpl")
+    [[ "$result" == *"netmask: 24"* ]]
+    [[ "$result" != *"{{VIP_NETMASK}}"* ]]
+}

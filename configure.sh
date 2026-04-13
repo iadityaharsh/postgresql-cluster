@@ -136,6 +136,8 @@ if [[ "${ENABLE_VIP}" == "Y" || "${ENABLE_VIP}" == "y" ]]; then
     done
     read -rp "Network interface [eth0]: " VIP_INTERFACE
     VIP_INTERFACE="${VIP_INTERFACE:-eth0}"
+    read -rp "  VIP netmask (CIDR bits, default 24): " VIP_NETMASK
+    VIP_NETMASK="${VIP_NETMASK:-24}"
 fi
 
 # ----- Network -----
@@ -268,6 +270,7 @@ done)
 # --- Virtual IP ---
 ENABLE_VIP="${ENABLE_VIP}"
 VIP_ADDRESS="${VIP_ADDRESS}"
+VIP_NETMASK="${VIP_NETMASK:-24}"
 VIP_INTERFACE="${VIP_INTERFACE}"
 
 # --- Network ---
