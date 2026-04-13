@@ -51,9 +51,17 @@ let authConfig = loadAuth();
 
 function verifyPassword(password, hash, salt) {
   return new Promise((resolve) => {
-    crypto.scrypt(password, Buffer.from(salt, 'hex'), 64, { N: 16384, r: 8, p: 1 }, (err, derived) => {
+    let saltBuf;
+    try { saltBuf = Buffer.from(salt, 'hex'); } catch { return resolve(false); }
+    crypto.scrypt(password, saltBuf, 64, { N: 16384, r: 8, p: 1 }, (err, derived) => {
       if (err) return resolve(false);
-      resolve(derived.toString('hex') === hash);
+      try {
+        const hashBuf = Buffer.from(hash, 'hex');
+        if (hashBuf.length !== derived.length) return resolve(false);
+        resolve(crypto.timingSafeEqual(derived, hashBuf));
+      } catch {
+        resolve(false);
+      }
     });
   });
 }
