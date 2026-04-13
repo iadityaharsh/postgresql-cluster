@@ -42,7 +42,7 @@ for i in $(seq 1 "${NODE_COUNT:-3}"); do
     NODE_IP_VAR="NODE_${i}_IP"
     NODE_IP="${!NODE_IP_VAR:-}"
     [ -z "${NODE_IP}" ] && continue
-    CURL_ARGS=(-sf)
+    CURL_ARGS=(-s --max-time 5)
     if [ -n "${PATRONI_API_USER:-}" ] && [ -n "${PATRONI_API_PASS:-}" ]; then
         CURL_ARGS+=(-u "${PATRONI_API_USER}:${PATRONI_API_PASS}")
     fi
