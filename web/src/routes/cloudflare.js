@@ -84,7 +84,7 @@ module.exports = function createCloudflareRouter(ctx) {
       result.installed = true;
       result.version = ver.match(/cloudflared version ([\d.]+)/)?.[1] || ver;
     } catch {}
-    try { result.running = require('child_process').execSync('systemctl is-active cloudflared 2>/dev/null').toString().trim() === 'active'; } catch {}
+    try { result.running = require('child_process').execSync('sudo systemctl is-active cloudflared 2>/dev/null').toString().trim() === 'active'; } catch {}
     res.json(result);
   });
 
@@ -108,7 +108,7 @@ module.exports = function createCloudflareRouter(ctx) {
     if (!scriptPath) { task.log.push(`[${new Date().toLocaleTimeString()}] ERROR: setup-tunnel.sh not found`); return false; }
     task.log.push(`[${new Date().toLocaleTimeString()}] --- This node ---`);
     const localOk = await new Promise((resolve) => {
-      const child = spawn('bash', [scriptPath, token], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TUNNEL_TOKEN: token } });
+      const child = spawn('sudo', ['bash', scriptPath, token], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TUNNEL_TOKEN: token } });
       child.stdout.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
       child.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
       child.on('close', (code) => resolve(code === 0));
@@ -186,7 +186,7 @@ module.exports = function createCloudflareRouter(ctx) {
     if (!token) return res.status(400).json({ error: 'Token required' });
     const scriptPath = findScript('setup-tunnel.sh');
     if (!scriptPath) return res.status(404).json({ error: 'setup-tunnel.sh not found' });
-    const child = spawn('bash', [scriptPath, token], { stdio: 'ignore', detached: true, env: { ...process.env, TUNNEL_TOKEN: token } });
+    const child = spawn('sudo', ['bash', scriptPath, token], { stdio: 'ignore', detached: true, env: { ...process.env, TUNNEL_TOKEN: token } });
     child.unref();
     res.json({ message: 'Tunnel connector setup started' });
   });

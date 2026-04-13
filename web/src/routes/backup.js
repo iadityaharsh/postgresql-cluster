@@ -14,7 +14,7 @@ module.exports = function createBackupRouter(ctx) {
   function runBorg(args, timeout = 15000) {
     return new Promise((resolve, reject) => {
       const env = { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '', BORG_REPO };
-      execFile('borg', args, { env, timeout }, (err, stdout, stderr) => {
+      execFile('sudo', ['-E', 'borg', ...args], { env, timeout }, (err, stdout, stderr) => {
         if (err) reject(new Error(stderr || err.message));
         else resolve(stdout);
       });
@@ -47,7 +47,7 @@ module.exports = function createBackupRouter(ctx) {
     backupTask = { running: true, log: [], exitCode: null, startTime: new Date().toISOString() };
     backupTask.log.push(`[${new Date().toLocaleTimeString()}] Starting backup task...`);
 
-    const child = spawn('bash', [BACKUP_SCRIPT], {
+    const child = spawn('sudo', ['bash', BACKUP_SCRIPT], {
       env: { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '' },
       stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -77,8 +77,8 @@ module.exports = function createBackupRouter(ctx) {
     restoreTask.log.push(`[${new Date().toLocaleTimeString()}] Starting restore of "${archive}"...`);
 
     const env = { ...process.env, BORG_PASSPHRASE: conf.BORG_PASSPHRASE || '', PGPASSWORD: PG_PASS };
-    const borgExtract = spawn('borg', ['extract', '--stdout', `${BORG_REPO}::${archive}`], { env });
-    const psqlRestore = spawn('psql', ['-h', host, '-p', PG_PORT, '-U', 'postgres', '-f', '-'], { env });
+    const borgExtract = spawn('sudo', ['-E', 'borg', 'extract', '--stdout', `${BORG_REPO}::${archive}`], { env });
+    const psqlRestore = spawn('sudo', ['-E', 'psql', '-h', host, '-p', PG_PORT, '-U', 'postgres', '-f', '-'], { env });
     borgExtract.stdout.pipe(psqlRestore.stdin);
     borgExtract.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { restoreTask.log.push(`[${new Date().toLocaleTimeString()}] borg: ${line}`); }); });
     psqlRestore.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { restoreTask.log.push(`[${new Date().toLocaleTimeString()}] psql: ${line}`); }); });
@@ -113,7 +113,7 @@ module.exports = function createBackupRouter(ctx) {
   // Storage endpoints
   function isLxcContainer() {
     try {
-      const virt = require('child_process').execSync('systemd-detect-virt --container 2>/dev/null || true').toString().trim();
+      const virt = require('child_process').execSync('sudo systemd-detect-virt --container 2>/dev/null || true').toString().trim();
       if (virt === 'lxc') return true;
       if (fs.existsSync('/proc/1/environ')) {
         const env = fs.readFileSync('/proc/1/environ', 'utf8');
@@ -128,10 +128,10 @@ module.exports = function createBackupRouter(ctx) {
       reloadConf();
       let mounted = false;
       try {
-        const automountActive = require('child_process').execSync('systemctl is-active mnt-pg\\\\x2dbackup.automount 2>/dev/null || echo inactive', { timeout: 3000 }).toString().trim() === 'active';
+        const automountActive = require('child_process').execSync('sudo systemctl is-active mnt-pg\\\\x2dbackup.automount 2>/dev/null || echo inactive', { timeout: 3000 }).toString().trim() === 'active';
         if (automountActive) { mounted = true; }
         else if (fs.existsSync('/mnt/pg-backup')) {
-          mounted = require('child_process').execSync('mountpoint -q /mnt/pg-backup 2>/dev/null && echo yes || echo no', { timeout: 5000 }).toString().trim() === 'yes';
+          mounted = require('child_process').execSync('sudo mountpoint -q /mnt/pg-backup 2>/dev/null && echo yes || echo no', { timeout: 5000 }).toString().trim() === 'yes';
         }
       } catch {}
       res.json({

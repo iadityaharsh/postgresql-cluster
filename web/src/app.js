@@ -211,9 +211,9 @@ function createApp() {
       const repoDir = repoCandidates.find(d => fs.existsSync(path.join(d, 'update.sh')));
       let cmd, args;
       if (!repoDir) {
-        cmd = 'bash'; args = ['-c', 'cd /root && [ ! -d postgresql-cluster/.git ] && rm -rf postgresql-cluster; git clone https://github.com/iadityaharsh/postgresql-cluster.git 2>&1 && cd postgresql-cluster && PG_DASHBOARD_UPGRADE=1 PG_UPDATE_PHASE=deploy bash update.sh 2>&1'];
+        cmd = 'sudo'; args = ['bash', '-c', 'cd /root && [ ! -d postgresql-cluster/.git ] && rm -rf postgresql-cluster; git clone https://github.com/iadityaharsh/postgresql-cluster.git 2>&1 && cd postgresql-cluster && PG_DASHBOARD_UPGRADE=1 PG_UPDATE_PHASE=deploy bash update.sh 2>&1'];
       } else {
-        cmd = 'bash'; args = ['-c', `cd ${repoDir} && git fetch origin --tags -f 2>&1 && git pull origin main 2>&1 && PG_DASHBOARD_UPGRADE=1 PG_UPDATE_PHASE=deploy bash update.sh 2>&1`];
+        cmd = 'sudo'; args = ['bash', '-c', `cd ${repoDir} && git fetch origin --tags -f 2>&1 && git pull origin main 2>&1 && PG_DASHBOARD_UPGRADE=1 PG_UPDATE_PHASE=deploy bash update.sh 2>&1`];
       }
       const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PG_DASHBOARD_UPGRADE: '1' } });
       child.stdout.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
@@ -253,17 +253,17 @@ function createApp() {
     }
     upgradeTask.log.push(`[${new Date().toLocaleTimeString()}] TASK OK — page will reload automatically.`);
     upgradeTask.exitCode = 0; upgradeTask.running = false;
-    setTimeout(() => { spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref(); }, 5000);
+    setTimeout(() => { spawn('sudo', ['systemctl', 'restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref(); }, 5000);
   });
 
   app.post('/api/version/upgrade/apply', async (req, res) => {
     const repoCandidates = [path.resolve(__dirname, '..', '..'), '/root/postgresql-cluster', path.resolve(os.homedir(), 'postgresql-cluster'), '/opt/postgresql-cluster'];
     const repoDir = repoCandidates.find(d => fs.existsSync(path.join(d, 'update.sh')));
     if (!repoDir) return res.status(404).json({ message: 'No git repo found' });
-    const child = spawn('bash', ['-c', `cd ${repoDir} && git fetch origin --tags -f 2>&1 && git pull origin main 2>&1 && PG_DASHBOARD_UPGRADE=1 PG_UPDATE_PHASE=deploy bash update.sh 2>&1`], { stdio: 'ignore', detached: true, env: { ...process.env, PG_DASHBOARD_UPGRADE: '1' } });
+    const child = spawn('sudo', ['bash', '-c', `cd ${repoDir} && git fetch origin --tags -f 2>&1 && git pull origin main 2>&1 && PG_DASHBOARD_UPGRADE=1 PG_UPDATE_PHASE=deploy bash update.sh 2>&1`], { stdio: 'ignore', detached: true, env: { ...process.env, PG_DASHBOARD_UPGRADE: '1' } });
     child.unref();
     res.json({ message: 'Upgrade started, restarting...' });
-    res.on('finish', () => { setTimeout(() => { spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref(); }, 5000); });
+    res.on('finish', () => { setTimeout(() => { spawn('sudo', ['systemctl', 'restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref(); }, 5000); });
   });
 
   app.get('/api/version/upgrade/status', (req, res) => {
@@ -279,26 +279,26 @@ function createApp() {
       reloadConf();
       let mounted = false;
       try {
-        const automountActive = require('child_process').execSync('systemctl is-active mnt-pg\\\\x2dbackup.automount 2>/dev/null || echo inactive', { timeout: 3000 }).toString().trim() === 'active';
+        const automountActive = require('child_process').execSync('sudo systemctl is-active mnt-pg\\\\x2dbackup.automount 2>/dev/null || echo inactive', { timeout: 3000 }).toString().trim() === 'active';
         if (automountActive) mounted = true;
-        else if (fs.existsSync('/mnt/pg-backup')) mounted = require('child_process').execSync('mountpoint -q /mnt/pg-backup 2>/dev/null && echo yes || echo no', { timeout: 5000 }).toString().trim() === 'yes';
+        else if (fs.existsSync('/mnt/pg-backup')) mounted = require('child_process').execSync('sudo mountpoint -q /mnt/pg-backup 2>/dev/null && echo yes || echo no', { timeout: 5000 }).toString().trim() === 'yes';
       } catch {}
       res.json({ enabled: conf.ENABLE_BACKUP === 'Y' || conf.ENABLE_BACKUP === 'y', type: conf.NFS_SERVER ? 'nfs' : (conf.SMB_SHARE ? 'smb' : 'none'), nfs_server: conf.NFS_SERVER || '', nfs_path: conf.NFS_PATH || '', smb_share: conf.SMB_SHARE || '', smb_user: conf.SMB_USER || '', smb_domain: conf.SMB_DOMAIN || '', schedule: conf.BACKUP_SCHEDULE || '0 2 * * *', retention: conf.BACKUP_LOCAL_RETENTION || '7', is_lxc: false, mounted });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
   app.post('/api/storage/mount', (req, res) => {
-    const child = spawn('bash', ['-c', 'mount /mnt/pg-backup 2>&1 || mount -a 2>&1'], { timeout: 15000 });
+    const child = spawn('sudo', ['bash', '-c', 'mount /mnt/pg-backup 2>&1 || mount -a 2>&1'], { timeout: 15000 });
     let out = '';
     child.stdout.on('data', d => out += d); child.stderr.on('data', d => out += d);
-    child.on('close', () => { try { const mounted = require('child_process').execSync('mountpoint -q /mnt/pg-backup && echo yes || echo no', { timeout: 3000 }).toString().trim() === 'yes'; if (mounted) res.json({ message: 'Share mounted successfully' }); else res.status(500).json({ error: out.trim() || 'Mount failed' }); } catch { res.status(500).json({ error: out.trim() || 'Mount failed' }); } });
+    child.on('close', () => { try { const mounted = require('child_process').execSync('sudo mountpoint -q /mnt/pg-backup && echo yes || echo no', { timeout: 3000 }).toString().trim() === 'yes'; if (mounted) res.json({ message: 'Share mounted successfully' }); else res.status(500).json({ error: out.trim() || 'Mount failed' }); } catch { res.status(500).json({ error: out.trim() || 'Mount failed' }); } });
     child.on('error', (err) => res.status(500).json({ error: err.message }));
   });
 
   app.get('/api/storage/nfs-exports', (req, res) => {
     const server = req.query.server;
     if (!server || !require('net').isIPv4(server)) return res.status(400).json({ error: 'Invalid server IP' });
-    const child = spawn('bash', ['-c', `command -v showmount >/dev/null 2>&1 || apt-get install -y -qq nfs-common >/dev/null 2>&1; showmount -e ${server} --no-headers 2>&1`], { timeout: 15000 });
+    const child = spawn('sudo', ['bash', '-c', `command -v showmount >/dev/null 2>&1 || apt-get install -y -qq nfs-common >/dev/null 2>&1; showmount -e ${server} --no-headers 2>&1`], { timeout: 15000 });
     let out = '';
     child.stdout.on('data', d => out += d); child.stderr.on('data', d => out += d);
     child.on('close', (code) => {
@@ -319,7 +319,7 @@ function createApp() {
     const script = findScript('setup-backup.sh');
     if (!script) return res.status(404).json({ error: 'setup-backup.sh not found' });
     storageTask = { running: true, log: [], exitCode: null, startTime: new Date().toISOString() };
-    const child = spawn('bash', [script], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('sudo', ['bash', script], { stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { storageTask.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
     child.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { storageTask.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
     child.on('close', (code) => { storageTask.exitCode = code; storageTask.log.push(`[${new Date().toLocaleTimeString()}] ${code === 0 ? 'TASK OK' : 'TASK ERROR'}`); storageTask.running = false; });
@@ -337,7 +337,7 @@ function createApp() {
     try {
       updateConfKeys(updates);
       const backupScript = findScript('setup-backup.sh');
-      if (backupScript) { const child = spawn('bash', [backupScript], { stdio: 'ignore', detached: true }); child.unref(); }
+      if (backupScript) { const child = spawn('sudo', ['bash', backupScript], { stdio: 'ignore', detached: true }); child.unref(); }
       res.json({ status: 'ok', message: 'Config applied, setup running' });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });

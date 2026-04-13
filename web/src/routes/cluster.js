@@ -217,8 +217,8 @@ module.exports = function createClusterRouter(ctx) {
     const results = [];
     for (const svc of services) {
       try {
-        require('child_process').execSync(`systemctl is-enabled ${svc} 2>/dev/null`, { timeout: 3000 });
-        require('child_process').execSync(`systemctl restart ${svc}`, { timeout: 30000 });
+        require('child_process').execSync(`sudo systemctl is-enabled ${svc} 2>/dev/null`, { timeout: 3000 });
+        require('child_process').execSync(`sudo systemctl restart ${svc}`, { timeout: 30000 });
         results.push({ service: svc, status: 'restarted' });
       } catch { results.push({ service: svc, status: 'skipped' }); }
     }
@@ -276,14 +276,14 @@ module.exports = function createClusterRouter(ctx) {
     restartTask.running = false;
     restartTask.done = true;
     setTimeout(() => {
-      spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
+      spawn('sudo', ['systemctl', 'restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
     }, 1500);
   });
 
   router.post('/restart/monitor', (req, res) => {
     res.json({ message: 'Restarting pg-monitor' });
     setTimeout(() => {
-      spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
+      spawn('sudo', ['systemctl', 'restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
     }, 500);
   });
 
