@@ -8,6 +8,8 @@ restapi:
   authentication:
     username: {{PATRONI_API_USER}}
     password: {{PATRONI_API_PASS}}
+  certfile: /etc/patroni/ssl/server.crt
+  keyfile: /etc/patroni/ssl/server.key
 
 etcd3:
   hosts:

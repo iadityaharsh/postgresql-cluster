@@ -268,3 +268,11 @@ TEOF
     grep -q '  cert: /etc/etcd/ssl/server.crt' "$t"
     grep -q '  key: /etc/etcd/ssl/server.key' "$t"
 }
+
+# ---- templates/patroni.yml: restapi TLS ----
+
+@test "patroni.yml template has restapi TLS cert paths" {
+    local t="$BATS_TEST_DIRNAME/../templates/patroni.yml"
+    grep -q '  certfile: /etc/patroni/ssl/server.crt' "$t"
+    grep -q '  keyfile: /etc/patroni/ssl/server.key' "$t"
+}
