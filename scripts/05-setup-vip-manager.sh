@@ -7,7 +7,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
+# shellcheck disable=SC1091
 source "${SCRIPT_DIR}/common.sh"
+# shellcheck disable=SC1091
+[ -f "${BASE_DIR}/versions.env" ] && source "${BASE_DIR}/versions.env"
 load_config
 
 if [[ "${ENABLE_VIP}" != "Y" && "${ENABLE_VIP}" != "y" ]]; then
@@ -20,49 +24,32 @@ NODE_NAME=$(get_node_name "$NODE_NUM")
 NODE_IP=$(get_node_ip "$NODE_NUM")
 
 echo "=== Setting up vip-manager on ${NODE_NAME} (${NODE_IP}) ==="
-echo "    Virtual IP: ${VIP_ADDRESS}"
-echo "    Interface:  ${VIP_INTERFACE}"
+echo "    Virtual IP:   ${VIP_ADDRESS}"
+echo "    Netmask:      ${VIP_NETMASK:-24}"
+echo "    Interface:    ${VIP_INTERFACE}"
 
-# Auto-detect interface if configured one doesn't exist
+# Auto-detect interface if the configured one doesn't exist, then export
+# VIP_INTERFACE so process_template picks it up.
 IFACE="${VIP_INTERFACE}"
 if ! ip link show "${IFACE}" &>/dev/null; then
     DETECTED=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | head -1)
     echo "Interface '${IFACE}' not found. Using detected: ${DETECTED}"
     IFACE="${DETECTED}"
+    export VIP_INTERFACE="${IFACE}"
 fi
 
 # Install vip-manager
+VIP_VERSION="${VIP_MANAGER_VERSION:-2.6.0}"
 apt-get update
 apt-get install -y vip-manager2 || {
-    echo "vip-manager2 not in apt repos, installing from GitHub release..."
-    VIP_VERSION="2.6.0"
+    echo "vip-manager2 not in apt repos, installing from GitHub release v${VIP_VERSION}..."
     wget -q "https://github.com/cybertec-postgresql/vip-manager/releases/download/v${VIP_VERSION}/vip-manager_${VIP_VERSION}_linux_amd64.deb" -O /tmp/vip-manager.deb
     dpkg -i /tmp/vip-manager.deb
     rm /tmp/vip-manager.deb
 }
 
-# Generate vip-manager config — need to fix the etcd endpoints format for YAML list
-ETCD_YAML_LIST=""
-for i in $(seq 1 "${NODE_COUNT}"); do
-    ETCD_YAML_LIST="${ETCD_YAML_LIST}  - http://$(get_node_ip "$i"):2379\n"
-done
-
-cat > /etc/default/vip-manager.yml << EOF
-ip: ${VIP_ADDRESS}
-netmask: 24
-interface: ${IFACE}
-
-trigger-key: /service/${CLUSTER_NAME}/leader
-trigger-value: "${NODE_NAME}"
-
-dcs-type: etcd
-dcs-endpoints:
-$(for i in $(seq 1 "${NODE_COUNT}"); do echo "  - https://$(get_node_ip "$i"):2379"; done)
-
-hosting-type: basic
-retry-after: 2
-retry-num: 3
-EOF
+# Render config from the template
+process_template "${TEMPLATES_DIR}/vip-manager.yml" "$NODE_NUM" > /etc/default/vip-manager.yml
 
 echo "vip-manager config written to /etc/default/vip-manager.yml"
 
