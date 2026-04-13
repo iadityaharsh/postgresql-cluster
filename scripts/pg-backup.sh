@@ -133,6 +133,14 @@ borg create \
 
 log "Archive created: ${ARCHIVE_NAME}"
 
+# Verify the archive we just created
+log "Verifying archive integrity..."
+if borg check --archives-only --last 1 "${BORG_REPO}" 2>&1 | tee -a "${LOG_FILE}"; then
+    log "Archive integrity verified."
+else
+    log "WARNING: Archive verification failed. The backup may be corrupted."
+fi
+
 # Prune old backups
 log "Pruning old archives (keeping ${LOCAL_RETENTION} daily, 4 weekly, 3 monthly)..."
 borg prune \
