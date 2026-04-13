@@ -238,6 +238,9 @@ PATRONI_API_PASS=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 # ----- etcd token -----
 ETCD_TOKEN=$(openssl rand -hex 8)
 
+# ----- Internal node-to-node auth secret -----
+INTERNAL_SECRET=$(openssl rand -hex 32)
+
 # ================================================================
 # Write cluster.conf
 # ================================================================
@@ -285,6 +288,9 @@ PG_ADMIN_PASS="${PG_ADMIN_PASS}"
 # --- Patroni REST API ---
 PATRONI_API_USER="${PATRONI_API_USER}"
 PATRONI_API_PASS="${PATRONI_API_PASS}"
+
+# --- Internal node-to-node auth ---
+INTERNAL_SECRET="${INTERNAL_SECRET}"
 
 # --- Monitoring ---
 MONITOR_PORT="${MONITOR_PORT}"
