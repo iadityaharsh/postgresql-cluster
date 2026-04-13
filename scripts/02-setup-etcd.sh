@@ -20,8 +20,20 @@ echo "=== Setting up etcd on ${NODE_NAME} (${NODE_IP}) ==="
 # Stop etcd if running
 systemctl stop etcd 2>/dev/null || true
 
-# Clear old etcd data for fresh cluster bootstrap
-rm -rf /var/lib/etcd/default
+# Clear old etcd data for fresh cluster bootstrap — prompt if non-empty
+if [ -d /var/lib/etcd/default ] && [ -n "$(ls -A /var/lib/etcd/default 2>/dev/null)" ]; then
+    echo ""
+    echo "WARNING: etcd data directory is NOT empty."
+    echo "Wiping it will destroy this node's cluster membership."
+    read -rp "Wipe existing etcd data and re-bootstrap? (y/N): " WIPE_ETCD
+    if [[ "${WIPE_ETCD}" != "y" && "${WIPE_ETCD}" != "Y" ]]; then
+        echo "Keeping existing etcd data."
+    else
+        rm -rf /var/lib/etcd/default
+    fi
+else
+    rm -rf /var/lib/etcd/default 2>/dev/null || true
+fi
 
 # Generate and install etcd config from template
 process_template "${TEMPLATES_DIR}/etcd.env" "$NODE_NUM" > /etc/default/etcd
