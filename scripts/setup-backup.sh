@@ -194,6 +194,19 @@ CRONEOF
 chmod 644 /etc/cron.d/pg-backup
 echo "Cron file written to /etc/cron.d/pg-backup (schedule: ${CRON_SCHEDULE})"
 
+# Install logrotate config
+cat > /etc/logrotate.d/pg-backup << 'LOGEOF'
+/var/log/pg-backup.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root root
+}
+LOGEOF
+
 echo ""
 echo "--- Borg Backup setup complete ---"
 if [ "${STORAGE_TYPE}" = "nfs" ]; then
