@@ -37,6 +37,9 @@ function createApp() {
   function updateConfKeys(updates) {
     let content = fs.existsSync(confPath) ? fs.readFileSync(confPath, 'utf8') : '';
     for (const [key, value] of Object.entries(updates)) {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) {
+        throw new Error(`Invalid config key: ${key}`);
+      }
       const regex = new RegExp(`^${key}=.*$`, 'm');
       const line = `${key}="${value}"`;
       if (regex.test(content)) content = content.replace(regex, line);
