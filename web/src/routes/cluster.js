@@ -11,6 +11,17 @@ module.exports = function createClusterRouter(ctx) {
   const router = express.Router();
   const { nodes, conf, fetchJSON, CLUSTER_NAME, VIP, PG_PORT, PG_PASS, PORT, PATRONI_API_USER, PATRONI_API_PASS, findScript } = ctx;
 
+  const pool = new Pool({
+    host: VIP || nodes[0].ip,
+    port: parseInt(PG_PORT),
+    user: 'postgres',
+    password: PG_PASS,
+    database: 'postgres',
+    connectionTimeoutMillis: 3000,
+    max: 5,
+    idleTimeoutMillis: 30000
+  });
+
   // Helper: Patroni auth object
   function pAuth() {
     return PATRONI_API_USER ? { user: PATRONI_API_USER, pass: PATRONI_API_PASS } : undefined;
@@ -91,10 +102,6 @@ module.exports = function createClusterRouter(ctx) {
 
   // GET /api/databases
   router.get('/databases', async (req, res) => {
-    const pool = new Pool({
-      host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres',
-      password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 3000
-    });
     try {
       const result = await pool.query(`
         SELECT datname, pg_database_size(datname) as size_bytes, numbackends as connections
@@ -102,15 +109,10 @@ module.exports = function createClusterRouter(ctx) {
       `);
       res.json(result.rows);
     } catch { res.json([]); }
-    finally { await pool.end(); }
   });
 
   // GET /api/replication
   router.get('/replication', async (req, res) => {
-    const pool = new Pool({
-      host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres',
-      password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 3000
-    });
     try {
       const result = await pool.query(`
         SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,
@@ -119,15 +121,10 @@ module.exports = function createClusterRouter(ctx) {
       `);
       res.json(result.rows);
     } catch { res.json([]); }
-    finally { await pool.end(); }
   });
 
   // GET /api/connections
   router.get('/connections', async (req, res) => {
-    const pool = new Pool({
-      host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres',
-      password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 3000
-    });
     try {
       const result = await pool.query(`
         SELECT state, count(*) as count FROM pg_stat_activity GROUP BY state ORDER BY count DESC
@@ -135,7 +132,6 @@ module.exports = function createClusterRouter(ctx) {
       const max = await pool.query('SHOW max_connections');
       res.json({ by_state: result.rows, max_connections: parseInt(max.rows[0].max_connections) });
     } catch { res.json({ by_state: [], max_connections: 0 }); }
-    finally { await pool.end(); }
   });
 
   // GET /api/system/local
@@ -291,6 +287,8 @@ module.exports = function createClusterRouter(ctx) {
     const since = parseInt(req.query.since) || 0;
     res.json({ running: restartTask.running, done: restartTask.done, log: restartTask.log.slice(since), totalLines: restartTask.log.length });
   });
+
+  router._pool = pool;
 
   return router;
 };

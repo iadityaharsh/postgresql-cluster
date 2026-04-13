@@ -36,3 +36,7 @@ if (require.main === module) {
     });
   }
 }
+
+process.on('SIGTERM', () => {
+  process.exit(0);
+});
