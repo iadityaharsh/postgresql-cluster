@@ -16,9 +16,14 @@ echo "  Cluster: ${CLUSTER_NAME}"
 echo "=========================================="
 
 ETCD_CACERT="/etc/etcd/ssl/ca.crt"
+ETCD_CERT="/etc/etcd/ssl/server.crt"
+ETCD_KEY="/etc/etcd/ssl/server.key"
 ETCD_TLS_ARGS=()
 if [ -f "${ETCD_CACERT}" ]; then
     ETCD_TLS_ARGS+=("--cacert=${ETCD_CACERT}")
+fi
+if [ -f "${ETCD_CERT}" ] && [ -f "${ETCD_KEY}" ]; then
+    ETCD_TLS_ARGS+=("--cert=${ETCD_CERT}" "--key=${ETCD_KEY}")
 fi
 
 echo ""

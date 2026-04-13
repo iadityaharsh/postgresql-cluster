@@ -253,3 +253,18 @@ TEOF
     # No placeholders remain
     [[ "$result" != *"{{"* ]]
 }
+
+# ---- templates/etcd.env: client cert auth ----
+
+@test "etcd.env template enables client cert auth" {
+    grep -q '^ETCD_CLIENT_CERT_AUTH="true"' "$BATS_TEST_DIRNAME/../templates/etcd.env"
+}
+
+# ---- templates/patroni.yml: etcd3 TLS client certs ----
+
+@test "patroni.yml template has etcd3 TLS client cert paths" {
+    local t="$BATS_TEST_DIRNAME/../templates/patroni.yml"
+    grep -q '  cacert: /etc/etcd/ssl/ca.crt' "$t"
+    grep -q '  cert: /etc/etcd/ssl/server.crt' "$t"
+    grep -q '  key: /etc/etcd/ssl/server.key' "$t"
+}
