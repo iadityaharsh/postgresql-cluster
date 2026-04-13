@@ -85,6 +85,22 @@ export BORG_REPO
 
 ARCHIVE_NAME="${CLUSTER_NAME}-$(date '+%Y-%m-%d_%H%M%S')"
 
+# Pre-check: is there enough /tmp space for the dump?
+log "Checking available disk space..."
+ESTIMATED_SIZE=$(PGPASSWORD="${PG_SUPERUSER_PASS}" psql -h "${BACKUP_HOST}" -p "${PG_PORT}" -U postgres -t -c \
+    "SELECT sum(pg_database_size(datname)) FROM pg_database WHERE datname NOT IN ('template0','template1');" 2>/dev/null | tr -d ' ')
+AVAILABLE_SPACE=$(df --output=avail /tmp 2>/dev/null | tail -1 | tr -d ' ')
+
+if [ -n "${ESTIMATED_SIZE}" ] && [ -n "${AVAILABLE_SPACE}" ]; then
+    AVAILABLE_BYTES=$((AVAILABLE_SPACE * 1024))
+    if [ "${AVAILABLE_BYTES}" -lt "${ESTIMATED_SIZE}" ]; then
+        log "ERROR: Insufficient /tmp space for dump. Need ~$(numfmt --to=iec "${ESTIMATED_SIZE}"), have $(numfmt --to=iec "${AVAILABLE_BYTES}")."
+        log "Tip: Set TMPDIR to a directory with more space."
+        exit 1
+    fi
+    log "Space OK: ~$(numfmt --to=iec "${ESTIMATED_SIZE}") needed, $(numfmt --to=iec "${AVAILABLE_BYTES}") available."
+fi
+
 # Run pg_dumpall first, then archive — so we catch connection failures before creating an archive
 log "Running pg_dumpall on ${BACKUP_HOST}:${PG_PORT}..."
 DUMP_FILE=$(mktemp /tmp/pg_dumpall.XXXXXX.sql)
