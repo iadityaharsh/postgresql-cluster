@@ -199,6 +199,12 @@ fi
 process_template "${TEMPLATES_DIR}/etcd.env" "$NODE_NUM" > /etc/default/etcd
 echo "etcd config written to /etc/default/etcd"
 
+# If re-joining (existing data), switch bootstrap mode
+if [ "$ETCD_HAS_DATA" = true ] && [ "$FORCE" != true ]; then
+    sed -i 's/ETCD_INITIAL_CLUSTER_STATE="new"/ETCD_INITIAL_CLUSTER_STATE="existing"/' /etc/default/etcd
+    echo "Set ETCD_INITIAL_CLUSTER_STATE=existing (re-joining cluster)"
+fi
+
 # Ensure data dir ownership
 mkdir -p /var/lib/etcd
 chown -R etcd:etcd /var/lib/etcd
