@@ -50,11 +50,14 @@ systemctl disable cloudflared 2>/dev/null || true
 # Step 3: Install as service with token — this is how Cloudflare recommends it
 echo "Installing cloudflared service with tunnel token..."
 cloudflared service install "${TOKEN}" 2>/dev/null || {
-    # If service already exists, update the token
+    # Fallback: write a systemd unit that reads the token from a
+    # mode-600 EnvironmentFile instead of embedding it in ExecStart
+    # (which would be world-readable via /etc/systemd/system).
     mkdir -p /etc/cloudflared
-    # cloudflared service install writes a systemd unit that uses the token
-    # If it fails, manually create/update the service
-    cat > /etc/systemd/system/cloudflared.service << EOF
+    printf 'TUNNEL_TOKEN=%s\n' "${TOKEN}" > /etc/cloudflared/tunnel-env
+    chmod 600 /etc/cloudflared/tunnel-env
+
+    cat > /etc/systemd/system/cloudflared.service << 'EOF'
 [Unit]
 Description=cloudflared tunnel connector
 After=network-online.target
@@ -63,7 +66,8 @@ Wants=network-online.target
 [Service]
 Type=notify
 TimeoutStartSec=0
-ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token ${TOKEN}
+EnvironmentFile=/etc/cloudflared/tunnel-env
+ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token ${TUNNEL_TOKEN}
 Restart=on-failure
 RestartSec=5s
 
