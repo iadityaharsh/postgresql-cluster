@@ -365,15 +365,32 @@ module.exports = function createCloudflareRouter(ctx) {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(database)) return res.status(400).json({ error: 'Invalid database name format' });
     const pool = new Pool({ host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres', password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 5000 });
     try {
-      const exists = await pool.query(`SELECT 1 FROM pg_roles WHERE rolname=$1`, [username]);
-      if (exists.rows.length > 0) await pool.query(`ALTER USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}'`);
-      else await pool.query(`CREATE USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}'`);
-      await pool.query(`GRANT ALL PRIVILEGES ON DATABASE ${database} TO ${username}`);
-      const dbPool = new Pool({ host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres', password: PG_PASS, database, connectionTimeoutMillis: 5000 });
+      const client = await pool.connect();
       try {
-        await dbPool.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${username}`);
-        await dbPool.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${username}`);
-      } finally { await dbPool.end().catch(() => {}); }
+        const safeUser = client.escapeIdentifier(username);
+        const safeDb = client.escapeIdentifier(database);
+        const safePw = client.escapeLiteral(password);
+        const exists = await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [username]);
+        if (exists.rows.length > 0) {
+          await client.query(`ALTER USER ${safeUser} WITH PASSWORD ${safePw}`);
+        } else {
+          await client.query(`CREATE USER ${safeUser} WITH PASSWORD ${safePw}`);
+        }
+        await client.query(`GRANT ALL PRIVILEGES ON DATABASE ${safeDb} TO ${safeUser}`);
+      } finally {
+        client.release();
+      }
+
+      const dbPool = new Pool({ host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres', password: PG_PASS, database, connectionTimeoutMillis: 5000 });
+      const dbClient = await dbPool.connect();
+      try {
+        const safeUser = dbClient.escapeIdentifier(username);
+        await dbClient.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${safeUser}`);
+        await dbClient.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${safeUser}`);
+      } finally {
+        dbClient.release();
+        await dbPool.end().catch(() => {});
+      }
       res.json({ message: `User ${username} configured with access to ${database}` });
     } catch (err) { res.status(500).json({ error: err.message }); }
     finally { await pool.end().catch(() => {}); }
