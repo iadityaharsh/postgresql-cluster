@@ -1,5 +1,5 @@
 ip: {{VIP_ADDRESS}}
-netmask: 24
+netmask: {{VIP_NETMASK}}
 interface: {{VIP_INTERFACE}}
 
 trigger-key: /service/{{CLUSTER_NAME}}/leader
@@ -7,7 +7,7 @@ trigger-value: "{{NODE_NAME}}"
 
 dcs-type: etcd
 dcs-endpoints:
-  - {{ETCD_ENDPOINTS}}
+{{VIP_ETCD_ENDPOINTS}}
 
 hosting-type: basic
 retry-after: 2

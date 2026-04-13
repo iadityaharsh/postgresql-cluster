@@ -84,7 +84,7 @@ module.exports = function createCloudflareRouter(ctx) {
       result.installed = true;
       result.version = ver.match(/cloudflared version ([\d.]+)/)?.[1] || ver;
     } catch {}
-    try { result.running = require('child_process').execSync('systemctl is-active cloudflared 2>/dev/null').toString().trim() === 'active'; } catch {}
+    try { result.running = require('child_process').execSync('sudo systemctl is-active cloudflared 2>/dev/null').toString().trim() === 'active'; } catch {}
     res.json(result);
   });
 
@@ -108,7 +108,7 @@ module.exports = function createCloudflareRouter(ctx) {
     if (!scriptPath) { task.log.push(`[${new Date().toLocaleTimeString()}] ERROR: setup-tunnel.sh not found`); return false; }
     task.log.push(`[${new Date().toLocaleTimeString()}] --- This node ---`);
     const localOk = await new Promise((resolve) => {
-      const child = spawn('bash', [scriptPath, token], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TUNNEL_TOKEN: token } });
+      const child = spawn('sudo', ['bash', scriptPath, token], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TUNNEL_TOKEN: token } });
       child.stdout.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
       child.stderr.on('data', (data) => { data.toString().split('\n').filter(l => l.trim()).forEach(line => { task.log.push(`[${new Date().toLocaleTimeString()}] ${line}`); }); });
       child.on('close', (code) => resolve(code === 0));
@@ -122,7 +122,7 @@ module.exports = function createCloudflareRouter(ctx) {
       task.log.push(`[${new Date().toLocaleTimeString()}] --- ${node.name} (${node.ip}) ---`);
       await new Promise((resolve) => {
         const postData = JSON.stringify({ token });
-        const r = http.request({ hostname: node.ip, port: PORT, path: '/api/tunnel/apply', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) }, timeout: 120000 }, (resp) => {
+        const r = http.request({ hostname: node.ip, port: PORT, path: '/api/tunnel/apply', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData), 'X-Internal-Token': conf.INTERNAL_SECRET || '' }, timeout: 120000 }, (resp) => {
           let body = '';
           resp.on('data', d => body += d);
           resp.on('end', () => { task.log.push(`[${new Date().toLocaleTimeString()}] ${node.name}: ${body.trim() || 'OK'}`); resolve(); });
@@ -186,7 +186,7 @@ module.exports = function createCloudflareRouter(ctx) {
     if (!token) return res.status(400).json({ error: 'Token required' });
     const scriptPath = findScript('setup-tunnel.sh');
     if (!scriptPath) return res.status(404).json({ error: 'setup-tunnel.sh not found' });
-    const child = spawn('bash', [scriptPath, token], { stdio: 'ignore', detached: true, env: { ...process.env, TUNNEL_TOKEN: token } });
+    const child = spawn('sudo', ['bash', scriptPath, token], { stdio: 'ignore', detached: true, env: { ...process.env, TUNNEL_TOKEN: token } });
     child.unref();
     res.json({ message: 'Tunnel connector setup started' });
   });
@@ -365,15 +365,32 @@ module.exports = function createCloudflareRouter(ctx) {
     if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(database)) return res.status(400).json({ error: 'Invalid database name format' });
     const pool = new Pool({ host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres', password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 5000 });
     try {
-      const exists = await pool.query(`SELECT 1 FROM pg_roles WHERE rolname=$1`, [username]);
-      if (exists.rows.length > 0) await pool.query(`ALTER USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}'`);
-      else await pool.query(`CREATE USER ${username} WITH PASSWORD '${password.replace(/'/g, "''")}'`);
-      await pool.query(`GRANT ALL PRIVILEGES ON DATABASE ${database} TO ${username}`);
-      const dbPool = new Pool({ host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres', password: PG_PASS, database, connectionTimeoutMillis: 5000 });
+      const client = await pool.connect();
       try {
-        await dbPool.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${username}`);
-        await dbPool.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${username}`);
-      } finally { await dbPool.end().catch(() => {}); }
+        const safeUser = client.escapeIdentifier(username);
+        const safeDb = client.escapeIdentifier(database);
+        const safePw = client.escapeLiteral(password);
+        const exists = await client.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [username]);
+        if (exists.rows.length > 0) {
+          await client.query(`ALTER USER ${safeUser} WITH PASSWORD ${safePw}`);
+        } else {
+          await client.query(`CREATE USER ${safeUser} WITH PASSWORD ${safePw}`);
+        }
+        await client.query(`GRANT ALL PRIVILEGES ON DATABASE ${safeDb} TO ${safeUser}`);
+      } finally {
+        client.release();
+      }
+
+      const dbPool = new Pool({ host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres', password: PG_PASS, database, connectionTimeoutMillis: 5000 });
+      const dbClient = await dbPool.connect();
+      try {
+        const safeUser = dbClient.escapeIdentifier(username);
+        await dbClient.query(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${safeUser}`);
+        await dbClient.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO ${safeUser}`);
+      } finally {
+        dbClient.release();
+        await dbPool.end().catch(() => {});
+      }
       res.json({ message: `User ${username} configured with access to ${database}` });
     } catch (err) { res.status(500).json({ error: err.message }); }
     finally { await pool.end().catch(() => {}); }

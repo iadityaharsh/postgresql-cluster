@@ -142,6 +142,12 @@ if mountpoint -q "${MOUNT_POINT}"; then
 
     # Initialize Borg repo with encryption
     BORG_REPO="${MOUNT_POINT}/borg-repo"
+    if [ -z "${BORG_PASSPHRASE:-}" ]; then
+        echo "ERROR: BORG_PASSPHRASE is empty in cluster.conf."
+        echo "Generate one with: openssl rand -base64 32"
+        echo "Then add it to cluster.conf as BORG_PASSPHRASE=\"<value>\""
+        exit 1
+    fi
     export BORG_PASSPHRASE="${BORG_PASSPHRASE:-}"
     if [ ! -d "${BORG_REPO}" ]; then
         echo "Initializing Borg repository (encrypted with repokey-blake2)..."
@@ -173,13 +179,33 @@ cp "${SCRIPT_DIR}/../cluster.conf" /opt/pg-backup/ 2>/dev/null || true
 
 # Setup cron (only runs backup on the leader node)
 CRON_SCHEDULE="${BACKUP_SCHEDULE:-0 2 * * *}"
-CRON_LINE="${CRON_SCHEDULE} root /opt/pg-backup/pg-backup.sh >> /var/log/pg-backup.log 2>&1"
 
-# Remove old cron entry if present
+# Clean up legacy crontab entry if present
 sed -i '/pg-backup/d' /etc/crontab 2>/dev/null || true
 
-echo "${CRON_LINE}" >> /etc/crontab
-echo "Cron job added: ${CRON_SCHEDULE}"
+# Use a dedicated cron file
+cat > /etc/cron.d/pg-backup << CRONEOF
+# PostgreSQL Borg Backup — managed by postgresql-cluster
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+BORG_PASSPHRASE=${BORG_PASSPHRASE}
+${CRON_SCHEDULE} root /opt/pg-backup/pg-backup.sh >> /var/log/pg-backup.log 2>&1
+CRONEOF
+chmod 644 /etc/cron.d/pg-backup
+echo "Cron file written to /etc/cron.d/pg-backup (schedule: ${CRON_SCHEDULE})"
+
+# Install logrotate config
+cat > /etc/logrotate.d/pg-backup << 'LOGEOF'
+/var/log/pg-backup.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 640 root root
+}
+LOGEOF
 
 echo ""
 echo "--- Borg Backup setup complete ---"

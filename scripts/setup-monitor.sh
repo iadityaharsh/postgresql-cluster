@@ -43,6 +43,42 @@ cp "${BASE_DIR}/scripts/"*.sh /opt/pg-monitor/scripts/ 2>/dev/null || true
 cd /opt/pg-monitor
 npm install --production --silent 2>/dev/null
 
+# Grant postgres user limited sudo for service management
+# IMPORTANT: no wildcards — each command is fully specified to prevent argv injection
+cat > /etc/sudoers.d/pg-monitor << 'SUDOEOF'
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart pg-monitor
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart patroni
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart etcd
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart vip-manager
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart cloudflared
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop patroni
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop etcd
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop vip-manager
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop cloudflared
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl start patroni
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl start etcd
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl start vip-manager
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl start cloudflared
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-enabled *
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-active *
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
+postgres ALL=(ALL) NOPASSWD: /usr/bin/mount /mnt/pg-backup
+postgres ALL=(ALL) NOPASSWD: /usr/bin/mount -a
+postgres ALL=(ALL) NOPASSWD: /usr/bin/mountpoint -q /mnt/pg-backup
+postgres ALL=(ALL) NOPASSWD: /usr/bin/systemd-detect-virt --container
+postgres ALL=(ALL) NOPASSWD: /usr/bin/apt-get update*
+postgres ALL=(ALL) NOPASSWD: /usr/bin/apt-get install*
+postgres ALL=(ALL) NOPASSWD: /bin/bash /opt/pg-backup/pg-backup.sh
+postgres ALL=(ALL) NOPASSWD: /bin/bash /opt/pg-monitor/scripts/setup-tunnel.sh *
+postgres ALL=(ALL) NOPASSWD: /bin/bash /opt/pg-monitor/scripts/setup-backup.sh
+postgres ALL=(ALL) NOPASSWD: /usr/bin/borg *
+postgres ALL=(ALL) NOPASSWD: /usr/bin/psql *
+SUDOEOF
+chmod 440 /etc/sudoers.d/pg-monitor
+
+# Ensure postgres owns the app directory
+chown -R postgres:postgres /opt/pg-monitor
+
 # Create systemd service
 cat > /etc/systemd/system/pg-monitor.service << EOF
 [Unit]
@@ -51,6 +87,8 @@ After=network.target patroni.service
 
 [Service]
 Type=simple
+User=postgres
+Group=postgres
 WorkingDirectory=/opt/pg-monitor
 ExecStart=/usr/bin/node server.js
 Restart=always

@@ -136,6 +136,8 @@ if [[ "${ENABLE_VIP}" == "Y" || "${ENABLE_VIP}" == "y" ]]; then
     done
     read -rp "Network interface [eth0]: " VIP_INTERFACE
     VIP_INTERFACE="${VIP_INTERFACE:-eth0}"
+    read -rp "  VIP netmask (CIDR bits, default 24): " VIP_NETMASK
+    VIP_NETMASK="${VIP_NETMASK:-24}"
 fi
 
 # ----- Network -----
@@ -238,6 +240,9 @@ PATRONI_API_PASS=$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)
 # ----- etcd token -----
 ETCD_TOKEN=$(openssl rand -hex 8)
 
+# ----- Internal node-to-node auth secret -----
+INTERNAL_SECRET=$(openssl rand -hex 32)
+
 # ================================================================
 # Write cluster.conf
 # ================================================================
@@ -265,6 +270,7 @@ done)
 # --- Virtual IP ---
 ENABLE_VIP="${ENABLE_VIP}"
 VIP_ADDRESS="${VIP_ADDRESS}"
+VIP_NETMASK="${VIP_NETMASK:-24}"
 VIP_INTERFACE="${VIP_INTERFACE}"
 
 # --- Network ---
@@ -285,6 +291,9 @@ PG_ADMIN_PASS="${PG_ADMIN_PASS}"
 # --- Patroni REST API ---
 PATRONI_API_USER="${PATRONI_API_USER}"
 PATRONI_API_PASS="${PATRONI_API_PASS}"
+
+# --- Internal node-to-node auth ---
+INTERNAL_SECRET="${INTERNAL_SECRET}"
 
 # --- Monitoring ---
 MONITOR_PORT="${MONITOR_PORT}"

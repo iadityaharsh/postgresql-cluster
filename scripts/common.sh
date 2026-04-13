@@ -64,6 +64,12 @@ validate_config() {
         done
     fi
 
+    # VIP_NETMASK is optional (defaults to 24) but if set must be numeric 1-32
+    if [ -n "${VIP_NETMASK:-}" ] && ! [[ "${VIP_NETMASK}" =~ ^[0-9]+$ && "${VIP_NETMASK}" -ge 1 && "${VIP_NETMASK}" -le 32 ]]; then
+        echo "ERROR: VIP_NETMASK must be an integer 1-32, got '${VIP_NETMASK}'" >&2
+        errors=$((errors + 1))
+    fi
+
     if [ "${errors}" -gt 0 ]; then
         echo "" >&2
         echo "cluster.conf failed validation with ${errors} error(s)." >&2
@@ -102,6 +108,13 @@ get_etcd_endpoints() {
 get_etcd3_host_list() {
     for i in $(seq 1 "${NODE_COUNT}"); do
         echo "    - https://$(get_node_ip "$i"):2379"
+    done
+}
+
+# Build YAML list of etcd endpoints for vip-manager (2-space indent, not 4)
+get_vip_etcd_endpoints() {
+    for i in $(seq 1 "${NODE_COUNT}"); do
+        echo "  - https://$(get_node_ip "$i"):2379"
     done
 }
 
@@ -173,9 +186,11 @@ process_template() {
     content=$(cat "$template_file")
 
     # Multi-line replacements (must be done before sed)
-    local etcd3_hosts
+    local etcd3_hosts vip_etcd_endpoints
     etcd3_hosts=$(get_etcd3_host_list)
     content="${content//\{\{ETCD3_HOST_LIST\}\}/$etcd3_hosts}"
+    vip_etcd_endpoints=$(get_vip_etcd_endpoints)
+    content="${content//\{\{VIP_ETCD_ENDPOINTS\}\}/$vip_etcd_endpoints}"
 
     # Global replacements
     content=$(echo "$content" | sed \
@@ -190,6 +205,7 @@ process_template() {
         -e "s|{{PG_ADMIN_PASS}}|${PG_ADMIN_PASS}|g" \
         -e "s|{{PG_HBA_SUBNET}}|${PG_HBA_SUBNET}|g" \
         -e "s|{{VIP_ADDRESS}}|${VIP_ADDRESS}|g" \
+        -e "s|{{VIP_NETMASK}}|${VIP_NETMASK:-24}|g" \
         -e "s|{{VIP_INTERFACE}}|${VIP_INTERFACE}|g" \
         -e "s|{{ETCD_TOKEN}}|${ETCD_TOKEN}|g" \
         -e "s|{{ETCD_ENDPOINTS}}|$(get_etcd_endpoints)|g" \

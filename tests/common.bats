@@ -185,3 +185,127 @@ SEOF
     # NODE_IP should not be replaced (still has placeholder)
     [[ "$result" == *"cluster: test-cluster"* ]]
 }
+
+# ---- get_vip_etcd_endpoints ----
+
+@test "get_vip_etcd_endpoints returns YAML list with 2-space indent" {
+    result=$(get_vip_etcd_endpoints)
+    [[ "$result" == *"  - https://10.0.0.1:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.2:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.3:2379"* ]]
+    # must be 3 lines for a 3-node cluster
+    [ "$(echo "$result" | wc -l)" -eq 3 ]
+}
+
+@test "get_vip_etcd_endpoints handles single-node cluster" {
+    cat > "$TEST_DIR/cluster.conf" << 'SEOF'
+NODE_COUNT=1
+NODE_1_IP="192.168.1.1"
+SEOF
+    # shellcheck disable=SC1090
+    source "$TEST_DIR/cluster.conf"
+    result=$(get_vip_etcd_endpoints)
+    [ "$result" = "  - https://192.168.1.1:2379" ]
+}
+
+# ---- process_template: VIP_ETCD_ENDPOINTS and VIP_NETMASK ----
+
+@test "process_template substitutes VIP_ETCD_ENDPOINTS (multi-line)" {
+    cat > "$TEST_DIR/templates/vip.tmpl" << 'TEOF'
+dcs-endpoints:
+{{VIP_ETCD_ENDPOINTS}}
+TEOF
+    result=$(process_template "$TEST_DIR/templates/vip.tmpl")
+    [[ "$result" == *"  - https://10.0.0.1:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.2:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.3:2379"* ]]
+    # placeholder must be fully replaced
+    [[ "$result" != *"{{VIP_ETCD_ENDPOINTS}}"* ]]
+}
+
+@test "process_template substitutes VIP_NETMASK" {
+    VIP_NETMASK="24"
+    cat > "$TEST_DIR/templates/vip-mask.tmpl" << 'TEOF'
+netmask: {{VIP_NETMASK}}
+TEOF
+    result=$(process_template "$TEST_DIR/templates/vip-mask.tmpl")
+    [[ "$result" == *"netmask: 24"* ]]
+    [[ "$result" != *"{{VIP_NETMASK}}"* ]]
+}
+
+# ---- templates/vip-manager.yml ----
+
+@test "vip-manager.yml renders with per-line etcd endpoints and netmask" {
+    VIP_NETMASK="24"
+    VIP_ADDRESS="10.0.0.100"
+    VIP_INTERFACE="eth0"
+    result=$(process_template "$BATS_TEST_DIRNAME/../templates/vip-manager.yml" 1)
+    # Each etcd endpoint must be on its own line with 2-space indent
+    [[ "$result" == *"  - https://10.0.0.1:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.2:2379"* ]]
+    [[ "$result" == *"  - https://10.0.0.3:2379"* ]]
+    # Netmask must be substituted
+    [[ "$result" == *"netmask: 24"* ]]
+    # VIP address must be substituted
+    [[ "$result" == *"ip: 10.0.0.100"* ]]
+    # trigger-value must be the node name
+    [[ "$result" == *"trigger-value: \"node-01\""* ]]
+    # No placeholders remain
+    [[ "$result" != *"{{"* ]]
+}
+
+# ---- templates/etcd.env: client cert auth ----
+
+@test "etcd.env template enables client cert auth" {
+    grep -q '^ETCD_CLIENT_CERT_AUTH="true"' "$BATS_TEST_DIRNAME/../templates/etcd.env"
+}
+
+# ---- templates/patroni.yml: etcd3 TLS client certs ----
+
+@test "patroni.yml template has etcd3 TLS client cert paths" {
+    local t="$BATS_TEST_DIRNAME/../templates/patroni.yml"
+    grep -q '  cacert: /etc/etcd/ssl/ca.crt' "$t"
+    grep -q '  cert: /etc/etcd/ssl/server.crt' "$t"
+    grep -q '  key: /etc/etcd/ssl/server.key' "$t"
+}
+
+# ---- templates/patroni.yml: restapi TLS ----
+
+@test "patroni.yml template has restapi TLS cert paths" {
+    local t="$BATS_TEST_DIRNAME/../templates/patroni.yml"
+    grep -q '  certfile: /etc/patroni/ssl/server.crt' "$t"
+    grep -q '  keyfile: /etc/patroni/ssl/server.key' "$t"
+}
+
+# ---- validate_config edge cases ----
+
+@test "validate_config rejects non-numeric NODE_COUNT" {
+    NODE_COUNT="abc"
+    run validate_config
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"NODE_COUNT must be a number"* ]]
+}
+
+@test "validate_config rejects invalid IP address" {
+    NODE_1_IP="not-an-ip"
+    run validate_config
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"is not a valid IPv4 address"* ]]
+}
+
+@test "validate_config rejects missing VIP fields" {
+    ENABLE_VIP="Y"
+    VIP_ADDRESS=""
+    VIP_INTERFACE=""
+    run validate_config
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"required when ENABLE_VIP=Y"* ]]
+}
+
+@test "validate_config accepts ENABLE_VIP=N" {
+    ENABLE_VIP="N"
+    VIP_ADDRESS=""
+    VIP_INTERFACE=""
+    run validate_config
+    [ "$status" -eq 0 ]
+}

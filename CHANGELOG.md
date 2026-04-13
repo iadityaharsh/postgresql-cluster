@@ -6,6 +6,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- Lock down internal endpoints with `X-Internal-Token` authentication (1.1)
+- Validate archive name in restore endpoint to prevent command injection (1.2)
+- Move cloudflared tunnel token to mode-600 EnvironmentFile (1.3)
+- Use escapeIdentifier/escapeLiteral in Hyperdrive create-user SQL (3.1)
+- Validate config keys in updateConfKeys to block regex injection (3.2)
+- Use timing-safe hash comparison for login authentication (3.3)
+- Enable etcd client certificate authentication (3.4)
+- Drop dashboard from root to postgres with sudoers policy (3.5)
+- Reject empty BORG_PASSPHRASE in backup scripts (4.2)
+
+### Fixed
+- Add missing `https` import to fix version-check crash (2.1)
+- Add data-wipe confirmations to standalone etcd/Patroni scripts (2.2, 2.3)
+- Fix vip-manager template etcd endpoints and add VIP_NETMASK (2.4)
+- Add disk space pre-check before pg_dumpall (4.1)
+- Add backup integrity verification after borg create (4.3)
+- Fix Patroni API auth in backup script (4.6)
+- Set ETCD_INITIAL_CLUSTER_STATE=existing on node re-join (6.1)
+- Enable Patroni REST API over HTTPS (6.4)
+
 ### Added
 
 - LICENSE (MIT), CONTRIBUTING.md, CHANGELOG.md, and `cluster.conf.example`
@@ -19,6 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to the pre-pull commit if any post-pull step fails.
 - `validate_config()` in `scripts/common.sh` runs after sourcing
   `cluster.conf` and fails fast on missing fields or invalid IPs.
+- Restore endpoint requires explicit confirmation and creates pre-restore safety backup (5.1)
+- React restore UI shows stronger confirmation warning (5.2)
+- Disaster recovery documentation (5.3)
+- Shared PG connection pool in cluster.js (6.2)
+- Use /etc/cron.d/pg-backup instead of appending to /etc/crontab (4.4)
+- Add logrotate for pg-backup.log (4.5)
+- Centralize vip-manager version in versions.env (6.3, absorbed into 2.4)
+- Comprehensive test coverage for validation, backup, and auth (7.1-7.3)
 
 ### Changed
 

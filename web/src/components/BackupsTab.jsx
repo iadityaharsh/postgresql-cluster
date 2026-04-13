@@ -80,7 +80,7 @@ export default function BackupsTab() {
       const resp = await fetch('/api/backups/restore', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archive })
+        body: JSON.stringify({ archive, confirm: true })
       });
       const data = await resp.json();
       if (resp.ok) {
@@ -331,7 +331,7 @@ export default function BackupsTab() {
       {confirmRestore && (
         <ConfirmModal
           title="Restore Backup"
-          message={`This will restore "${confirmRestore}" to the database via the VIP. Existing data in affected databases will be overwritten. Are you sure?`}
+          message={`WARNING: This will DROP and recreate all databases on the live production cluster. A pre-restore safety backup will be created automatically.\n\nArchive: ${confirmRestore}\n\nAre you absolutely sure?`}
           confirmText="Restore"
           confirmClass="danger"
           onConfirm={() => restoreBackup(confirmRestore)}

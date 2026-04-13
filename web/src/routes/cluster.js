@@ -11,6 +11,17 @@ module.exports = function createClusterRouter(ctx) {
   const router = express.Router();
   const { nodes, conf, fetchJSON, CLUSTER_NAME, VIP, PG_PORT, PG_PASS, PORT, PATRONI_API_USER, PATRONI_API_PASS, findScript } = ctx;
 
+  const pool = new Pool({
+    host: VIP || nodes[0].ip,
+    port: parseInt(PG_PORT),
+    user: 'postgres',
+    password: PG_PASS,
+    database: 'postgres',
+    connectionTimeoutMillis: 3000,
+    max: 5,
+    idleTimeoutMillis: 30000
+  });
+
   // Helper: Patroni auth object
   function pAuth() {
     return PATRONI_API_USER ? { user: PATRONI_API_USER, pass: PATRONI_API_PASS } : undefined;
@@ -21,12 +32,12 @@ module.exports = function createClusterRouter(ctx) {
     try {
       let cluster = null;
       for (const node of nodes) {
-        cluster = await fetchJSON(`http://${node.ip}:8008/cluster`, 3000, pAuth());
+        cluster = await fetchJSON(`https://${node.ip}:8008/cluster`, 3000, pAuth());
         if (cluster) break;
       }
       const nodeStatuses = await Promise.all(
         nodes.map(async node => {
-          const status = await fetchJSON(`http://${node.ip}:8008/patroni`, 3000, pAuth());
+          const status = await fetchJSON(`https://${node.ip}:8008/patroni`, 3000, pAuth());
           return { name: node.name, ip: node.ip, patroni: status };
         })
       );
@@ -45,7 +56,7 @@ module.exports = function createClusterRouter(ctx) {
     try {
       let cluster = null;
       for (const node of nodes) {
-        cluster = await fetchJSON(`http://${node.ip}:8008/cluster`, 3000, pAuth());
+        cluster = await fetchJSON(`https://${node.ip}:8008/cluster`, 3000, pAuth());
         if (cluster) break;
       }
       if (!cluster || !cluster.members) {
@@ -66,9 +77,9 @@ module.exports = function createClusterRouter(ctx) {
       const switchHeaders = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(postData) };
       if (PATRONI_API_USER) switchHeaders['Authorization'] = 'Basic ' + Buffer.from(`${PATRONI_API_USER}:${PATRONI_API_PASS}`).toString('base64');
       const switchRes = await new Promise((resolve, reject) => {
-        const r = http.request({
+        const r = https.request({
           hostname: leaderNode.ip, port: 8008, path: '/switchover',
-          method: 'POST', headers: switchHeaders, timeout: 15000
+          method: 'POST', headers: switchHeaders, timeout: 15000, rejectUnauthorized: false
         }, (resp) => {
           let body = '';
           resp.on('data', d => body += d);
@@ -91,10 +102,6 @@ module.exports = function createClusterRouter(ctx) {
 
   // GET /api/databases
   router.get('/databases', async (req, res) => {
-    const pool = new Pool({
-      host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres',
-      password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 3000
-    });
     try {
       const result = await pool.query(`
         SELECT datname, pg_database_size(datname) as size_bytes, numbackends as connections
@@ -102,15 +109,10 @@ module.exports = function createClusterRouter(ctx) {
       `);
       res.json(result.rows);
     } catch { res.json([]); }
-    finally { await pool.end(); }
   });
 
   // GET /api/replication
   router.get('/replication', async (req, res) => {
-    const pool = new Pool({
-      host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres',
-      password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 3000
-    });
     try {
       const result = await pool.query(`
         SELECT client_addr, state, sent_lsn, write_lsn, flush_lsn, replay_lsn,
@@ -119,15 +121,10 @@ module.exports = function createClusterRouter(ctx) {
       `);
       res.json(result.rows);
     } catch { res.json([]); }
-    finally { await pool.end(); }
   });
 
   // GET /api/connections
   router.get('/connections', async (req, res) => {
-    const pool = new Pool({
-      host: VIP || nodes[0].ip, port: parseInt(PG_PORT), user: 'postgres',
-      password: PG_PASS, database: 'postgres', connectionTimeoutMillis: 3000
-    });
     try {
       const result = await pool.query(`
         SELECT state, count(*) as count FROM pg_stat_activity GROUP BY state ORDER BY count DESC
@@ -135,7 +132,6 @@ module.exports = function createClusterRouter(ctx) {
       const max = await pool.query('SHOW max_connections');
       res.json({ by_state: result.rows, max_connections: parseInt(max.rows[0].max_connections) });
     } catch { res.json({ by_state: [], max_connections: 0 }); }
-    finally { await pool.end(); }
   });
 
   // GET /api/system/local
@@ -193,12 +189,12 @@ module.exports = function createClusterRouter(ctx) {
   // GET /api/config/patroni
   router.get('/config/patroni', async (req, res) => {
     const configs = {};
-    const pOpts = { timeout: 5000 };
+    const pOpts = { timeout: 5000, rejectUnauthorized: false };
     if (PATRONI_API_USER) pOpts.headers = { 'Authorization': 'Basic ' + Buffer.from(`${PATRONI_API_USER}:${PATRONI_API_PASS}`).toString('base64') };
     for (const node of nodes) {
       try {
         const resp = await new Promise((resolve, reject) => {
-          const r = http.get(`http://${node.ip}:8008/config`, pOpts, resolve);
+          const r = https.get(`https://${node.ip}:8008/config`, pOpts, resolve);
           r.on('error', reject);
           r.on('timeout', () => { r.destroy(); reject(new Error('timeout')); });
         });
@@ -217,8 +213,8 @@ module.exports = function createClusterRouter(ctx) {
     const results = [];
     for (const svc of services) {
       try {
-        require('child_process').execSync(`systemctl is-enabled ${svc} 2>/dev/null`, { timeout: 3000 });
-        require('child_process').execSync(`systemctl restart ${svc}`, { timeout: 30000 });
+        require('child_process').execSync(`sudo systemctl is-enabled ${svc} 2>/dev/null`, { timeout: 3000 });
+        require('child_process').execSync(`sudo systemctl restart ${svc}`, { timeout: 30000 });
         results.push({ service: svc, status: 'restarted' });
       } catch { results.push({ service: svc, status: 'skipped' }); }
     }
@@ -235,7 +231,7 @@ module.exports = function createClusterRouter(ctx) {
       restartTask.log.push(`Restarting services on ${node.name} (${node.ip})...`);
       try {
         const result = await new Promise((resolve, reject) => {
-          const r = http.request(`http://${node.ip}:${PORT}/api/restart/local`, { method: 'POST', timeout: 60000, headers: { 'Content-Type': 'application/json' } }, (resp) => {
+          const r = http.request(`http://${node.ip}:${PORT}/api/restart/local`, { method: 'POST', timeout: 60000, headers: { 'Content-Type': 'application/json', 'X-Internal-Token': conf.INTERNAL_SECRET || '' } }, (resp) => {
             let body = '';
             resp.on('data', d => body += d);
             resp.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({ results: [] }); } });
@@ -259,7 +255,7 @@ module.exports = function createClusterRouter(ctx) {
       restartTask.log.push(`Restarting pg-monitor on ${node.name}...`);
       try {
         await new Promise((resolve, reject) => {
-          const r = http.request(`http://${node.ip}:${PORT}/api/restart/monitor`, { method: 'POST', timeout: 15000, headers: { 'Content-Type': 'application/json' } }, (resp) => {
+          const r = http.request(`http://${node.ip}:${PORT}/api/restart/monitor`, { method: 'POST', timeout: 15000, headers: { 'Content-Type': 'application/json', 'X-Internal-Token': conf.INTERNAL_SECRET || '' } }, (resp) => {
             let body = '';
             resp.on('data', d => body += d);
             resp.on('end', () => resolve(body));
@@ -276,14 +272,14 @@ module.exports = function createClusterRouter(ctx) {
     restartTask.running = false;
     restartTask.done = true;
     setTimeout(() => {
-      spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
+      spawn('sudo', ['systemctl', 'restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
     }, 1500);
   });
 
   router.post('/restart/monitor', (req, res) => {
     res.json({ message: 'Restarting pg-monitor' });
     setTimeout(() => {
-      spawn('systemctl', ['restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
+      spawn('sudo', ['systemctl', 'restart', 'pg-monitor'], { detached: true, stdio: 'ignore' }).unref();
     }, 500);
   });
 
@@ -291,6 +287,8 @@ module.exports = function createClusterRouter(ctx) {
     const since = parseInt(req.query.since) || 0;
     res.json({ running: restartTask.running, done: restartTask.done, log: restartTask.log.slice(since), totalLines: restartTask.log.length });
   });
+
+  router._pool = pool;
 
   return router;
 };

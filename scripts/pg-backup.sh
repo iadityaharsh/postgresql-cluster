@@ -42,11 +42,11 @@ for i in $(seq 1 "${NODE_COUNT:-3}"); do
     NODE_IP_VAR="NODE_${i}_IP"
     NODE_IP="${!NODE_IP_VAR:-}"
     [ -z "${NODE_IP}" ] && continue
-    CURL_ARGS=(-sf)
+    CURL_ARGS=(-s -k --max-time 5)
     if [ -n "${PATRONI_API_USER:-}" ] && [ -n "${PATRONI_API_PASS:-}" ]; then
         CURL_ARGS+=(-u "${PATRONI_API_USER}:${PATRONI_API_PASS}")
     fi
-    CLUSTER_JSON=$(curl "${CURL_ARGS[@]}" "http://${NODE_IP}:8008/cluster" 2>/dev/null || true)
+    CLUSTER_JSON=$(curl "${CURL_ARGS[@]}" "https://${NODE_IP}:8008/cluster" 2>/dev/null || true)
     if [ -n "${CLUSTER_JSON}" ]; then
         LEADER_NAME=$(echo "${CLUSTER_JSON}" | python3 -c "import sys,json; members=json.load(sys.stdin).get('members',[]); print(next((m['name'] for m in members if m.get('role')=='leader'),''))" 2>/dev/null || true)
         LEADER_IP=$(echo "${CLUSTER_JSON}" | python3 -c "import sys,json; members=json.load(sys.stdin).get('members',[]); leader=[m for m in members if m.get('role')=='leader']; print(leader[0]['host'] if leader else '')" 2>/dev/null || true)
@@ -81,9 +81,29 @@ if [ ! -d "${BORG_REPO}" ]; then
 fi
 
 export BORG_PASSPHRASE="${BORG_PASSPHRASE:-}"
+if [ -z "${BORG_PASSPHRASE}" ]; then
+    log "ERROR: BORG_PASSPHRASE is empty. Cannot access encrypted Borg repo."
+    exit 1
+fi
 export BORG_REPO
 
 ARCHIVE_NAME="${CLUSTER_NAME}-$(date '+%Y-%m-%d_%H%M%S')"
+
+# Pre-check: is there enough /tmp space for the dump?
+log "Checking available disk space..."
+ESTIMATED_SIZE=$(PGPASSWORD="${PG_SUPERUSER_PASS}" psql -h "${BACKUP_HOST}" -p "${PG_PORT}" -U postgres -t -c \
+    "SELECT sum(pg_database_size(datname)) FROM pg_database WHERE datname NOT IN ('template0','template1');" 2>/dev/null | tr -d ' ')
+AVAILABLE_SPACE=$(df --output=avail /tmp 2>/dev/null | tail -1 | tr -d ' ')
+
+if [ -n "${ESTIMATED_SIZE}" ] && [ -n "${AVAILABLE_SPACE}" ]; then
+    AVAILABLE_BYTES=$((AVAILABLE_SPACE * 1024))
+    if [ "${AVAILABLE_BYTES}" -lt "${ESTIMATED_SIZE}" ]; then
+        log "ERROR: Insufficient /tmp space for dump. Need ~$(numfmt --to=iec "${ESTIMATED_SIZE}"), have $(numfmt --to=iec "${AVAILABLE_BYTES}")."
+        log "Tip: Set TMPDIR to a directory with more space."
+        exit 1
+    fi
+    log "Space OK: ~$(numfmt --to=iec "${ESTIMATED_SIZE}") needed, $(numfmt --to=iec "${AVAILABLE_BYTES}") available."
+fi
 
 # Run pg_dumpall first, then archive — so we catch connection failures before creating an archive
 log "Running pg_dumpall on ${BACKUP_HOST}:${PG_PORT}..."
@@ -112,6 +132,14 @@ borg create \
     - < "${DUMP_FILE}" 2>&1 | tee -a "${LOG_FILE}"
 
 log "Archive created: ${ARCHIVE_NAME}"
+
+# Verify the archive we just created
+log "Verifying archive integrity..."
+if borg check --archives-only --last 1 "${BORG_REPO}" 2>&1 | tee -a "${LOG_FILE}"; then
+    log "Archive integrity verified."
+else
+    log "WARNING: Archive verification failed. The backup may be corrupted."
+fi
 
 # Prune old backups
 log "Pruning old archives (keeping ${LOCAL_RETENTION} daily, 4 weekly, 3 monthly)..."

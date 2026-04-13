@@ -199,6 +199,12 @@ fi
 process_template "${TEMPLATES_DIR}/etcd.env" "$NODE_NUM" > /etc/default/etcd
 echo "etcd config written to /etc/default/etcd"
 
+# If re-joining (existing data), switch bootstrap mode
+if [ "$ETCD_HAS_DATA" = true ] && [ "$FORCE" != true ]; then
+    sed -i 's/ETCD_INITIAL_CLUSTER_STATE="new"/ETCD_INITIAL_CLUSTER_STATE="existing"/' /etc/default/etcd
+    echo "Set ETCD_INITIAL_CLUSTER_STATE=existing (re-joining cluster)"
+fi
+
 # Ensure data dir ownership
 mkdir -p /var/lib/etcd
 chown -R etcd:etcd /var/lib/etcd
@@ -218,9 +224,14 @@ systemctl start etcd || true
 echo "Waiting for etcd cluster to become healthy..."
 ETCD_READY=false
 ETCD_CACERT="${ETCD_SSL_DIR}/ca.crt"
+ETCD_CERT="${ETCD_SSL_DIR}/server.crt"
+ETCD_KEY="${ETCD_SSL_DIR}/server.key"
 ETCD_HEALTH_ARGS=(endpoint health --endpoints="https://127.0.0.1:2379")
 if [ -f "${ETCD_CACERT}" ]; then
     ETCD_HEALTH_ARGS+=("--cacert=${ETCD_CACERT}")
+fi
+if [ -f "${ETCD_CERT}" ] && [ -f "${ETCD_KEY}" ]; then
+    ETCD_HEALTH_ARGS+=("--cert=${ETCD_CERT}" "--key=${ETCD_KEY}")
 fi
 for attempt in $(seq 1 30); do
     if etcdctl "${ETCD_HEALTH_ARGS[@]}" &>/dev/null; then

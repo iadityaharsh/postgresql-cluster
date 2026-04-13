@@ -22,9 +22,11 @@ NODE_3_IP="10.0.0.13"
 
 # --- Virtual IP ---
 # Set ENABLE_VIP="N" to skip vip-manager entirely. When enabled,
-# both VIP_ADDRESS and VIP_INTERFACE are required.
+# both VIP_ADDRESS and VIP_INTERFACE are required. VIP_NETMASK is
+# optional and defaults to 24 if not set.
 ENABLE_VIP="Y"
 VIP_ADDRESS="10.0.0.10"
+VIP_NETMASK="24"
 VIP_INTERFACE="eth0"
 
 # --- Network ---
@@ -45,6 +47,9 @@ PG_ADMIN_PASS="replace-me"
 # --- Patroni REST API ---
 PATRONI_API_USER="patroni"
 PATRONI_API_PASS="replace-with-openssl-rand-base64-24"
+
+# --- Internal node-to-node auth ---
+INTERNAL_SECRET="replace-with-openssl-rand-hex-32"
 
 # --- Monitoring dashboard ---
 MONITOR_PORT="8080"
