@@ -64,3 +64,66 @@ describe('internal auth helpers', () => {
     expect(isInternalRequest(req)).toBe(false);
   });
 });
+
+describe('authMiddleware public/internal split', () => {
+  let tmpDir, confPath, app;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'auth-mw-test-'));
+    confPath = path.join(tmpDir, 'cluster.conf');
+    fs.writeFileSync(confPath, 'INTERNAL_SECRET="deadbeef1234"\n');
+    process.env.PG_CLUSTER_CONF = confPath;
+    jest.resetModules();
+
+    const express = require('express');
+    const { authMiddleware, setAuthConfig } = require('../src/middleware/auth');
+    // Simulate auth being configured so the middleware actually guards
+    setAuthConfig({ username: 'test', hash: 'x', salt: 'y' });
+    app = express();
+    app.use(express.json());
+    app.use(authMiddleware);
+    app.get('/api/version', (req, res) => res.json({ ok: 'public' }));
+    app.post('/api/restart/local', (req, res) => res.json({ ok: 'internal' }));
+    app.post('/api/version/upgrade/apply', (req, res) => res.json({ ok: 'internal' }));
+  });
+
+  afterEach(() => {
+    delete process.env.PG_CLUSTER_CONF;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const request = require('supertest');
+
+  test('public path /api/version always allowed', async () => {
+    const res = await request(app).get('/api/version');
+    expect(res.status).toBe(200);
+  });
+
+  test('internal path rejected without header or session', async () => {
+    const res = await request(app).post('/api/restart/local');
+    expect(res.status).toBe(401);
+  });
+
+  test('internal path allowed with valid X-Internal-Token', async () => {
+    const res = await request(app)
+      .post('/api/restart/local')
+      .set('X-Internal-Token', 'deadbeef1234');
+    expect(res.status).toBe(200);
+  });
+
+  test('internal path rejected with wrong X-Internal-Token', async () => {
+    const res = await request(app)
+      .post('/api/restart/local')
+      .set('X-Internal-Token', 'wrongwrong12');
+    expect(res.status).toBe(401);
+  });
+
+  test('upgrade/apply also requires header', async () => {
+    const noHeader = await request(app).post('/api/version/upgrade/apply');
+    expect(noHeader.status).toBe(401);
+    const withHeader = await request(app)
+      .post('/api/version/upgrade/apply')
+      .set('X-Internal-Token', 'deadbeef1234');
+    expect(withHeader.status).toBe(200);
+  });
+});
