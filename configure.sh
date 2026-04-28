@@ -611,8 +611,8 @@ while true; do
 
     if [[ $STEP -lt 1 ]]; then
         clear
-        echo "Wizard cancelled."
-        exit 0
+        echo "Setup cancelled."
+        exit 1
     fi
 
     if [[ $STEP -gt $FINAL_STEP ]]; then

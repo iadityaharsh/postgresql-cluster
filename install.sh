@@ -108,5 +108,10 @@ else
     echo ""
     echo "Starting configuration wizard..."
     echo ""
-    ./configure.sh
+    if ! ./configure.sh; then
+        cd ..
+        rm -rf "${DIR}"
+        echo "Directory removed. Run the installer again when ready."
+        exit 0
+    fi
 fi
