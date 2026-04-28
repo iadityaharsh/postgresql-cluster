@@ -16,17 +16,18 @@ T="PostgreSQL HA Cluster Setup"  # window title
 W=76   # width
 H=22   # height
 
-# ── Ensure whiptail is available ─────────────────────────────────────────────
-if ! command -v whiptail &>/dev/null; then
-    echo "Installing whiptail..."
-    apt-get install -y whiptail &>/dev/null || {
-        echo "ERROR: whiptail not found - install with: apt-get install whiptail" >&2
+# ── Ensure dialog is available ───────────────────────────────────────────────
+if ! command -v dialog &>/dev/null; then
+    echo "Installing dialog..."
+    apt-get install -y dialog &>/dev/null || {
+        echo "ERROR: dialog not found - install with: apt-get install dialog" >&2
         exit 1
     }
 fi
 
-# ── Whiptail helpers ─────────────────────────────────────────────────────────
+# ── Dialog helpers ────────────────────────────────────────────────────────────
 # Each returns 0 (OK/Next) or 1 (Back/Cancel)
+# dialog writes selected value to stderr; we capture it via a temp file.
 
 _wt_tmp=""
 _wt_init_tmp() { _wt_tmp=$(mktemp); }
@@ -34,11 +35,10 @@ _wt_read_tmp() { cat "$_wt_tmp"; rm -f "$_wt_tmp"; }
 _wt_drop_tmp() { rm -f "$_wt_tmp"; }
 
 wt_input() {
-    # wt_input VARNAME "prompt" "default"
     local -n _r=$1
     local prompt=$2 default=${3:-}
     _wt_init_tmp
-    if whiptail --title "$T" --cancel-button "Back" \
+    if dialog --title "$T" --cancel-label "Back" \
             --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp"; then
         _r=$(_wt_read_tmp)
     else
@@ -50,8 +50,8 @@ wt_pass() {
     local -n _r=$1
     local prompt=$2
     _wt_init_tmp
-    if whiptail --title "$T" --cancel-button "Back" \
-            --passwordbox "$prompt" 12 $W 2>"$_wt_tmp"; then
+    if dialog --title "$T" --cancel-label "Back" \
+            --passwordbox "$prompt" 12 $W "" 2>"$_wt_tmp"; then
         _r=$(_wt_read_tmp)
     else
         _wt_drop_tmp; return 1
@@ -63,8 +63,7 @@ wt_menu() {
     local prompt=$2
     shift 2
     _wt_init_tmp
-    # Use --notags so item tags aren't shown; ESC returns 255 which we treat as Back
-    if whiptail --title "$T" --cancel-button "Back" \
+    if dialog --title "$T" --cancel-label "Back" \
             --menu "$prompt" $H $W 8 "$@" 2>"$_wt_tmp"; then
         _r=$(_wt_read_tmp)
     else
@@ -75,20 +74,20 @@ wt_menu() {
 wt_yesno() {
     # returns 0=yes 1=no/back
     local prompt=$1 yeslabel=${2:-Yes} nolabel=${3:-No}
-    whiptail --title "$T" \
-        --yes-button "$yeslabel" --no-button "$nolabel" \
+    dialog --title "$T" \
+        --yes-label "$yeslabel" --no-label "$nolabel" \
         --yesno "$prompt" $H $W
 }
 
 wt_msg() {
-    whiptail --title "$T" --ok-button "OK" \
+    dialog --title "$T" --ok-label "OK" \
         --msgbox "$1" $H $W || true
 }
 
 wt_confirm() {
     local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"Back"}
-    whiptail --title "$T" \
-        --yes-button "$yeslabel" --no-button "$nolabel" \
+    dialog --title "$T" \
+        --yes-label "$yeslabel" --no-label "$nolabel" \
         --yesno "$prompt" 24 $W
 }
 
