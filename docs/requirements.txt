@@ -1,0 +1,7 @@
+# Pinned Python dependencies for Patroni.
+# Patches (z in x.y.z) are picked up automatically; minor/major
+# bumps require an explicit edit + re-test of cluster bootstrap.
+# patroni[etcd3]>=4.0.0 is required for PostgreSQL 18 support.
+
+patroni[etcd3]==4.0.4
+psycopg2-binary==2.9.10

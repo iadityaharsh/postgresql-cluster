@@ -1,0 +1,18 @@
+ip: {{VIP_ADDRESS}}
+netmask: {{VIP_NETMASK}}
+interface: {{VIP_INTERFACE}}
+
+trigger-key: /service/{{CLUSTER_NAME}}/leader
+trigger-value: "{{NODE_NAME}}"
+
+dcs-type: etcd
+dcs-endpoints:
+{{VIP_ETCD_ENDPOINTS}}
+
+etcd-ca-file: /etc/etcd/ssl/ca.crt
+etcd-cert-file: /etc/etcd/ssl/server.crt
+etcd-key-file: /etc/etcd/ssl/server.key
+
+manager-type: patroni
+retry-after: 2
+retry-num: 3
