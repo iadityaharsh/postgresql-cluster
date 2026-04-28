@@ -1,6 +1,6 @@
 # PostgreSQL HA Cluster
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-GPL--v3-blue)
 ![Version](https://img.shields.io/github/v/tag/iadityaharsh/postgresql-cluster?label=version)
 ![Platform](https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-orange)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15%2B-336791?logo=postgresql&logoColor=white)
@@ -166,4 +166,4 @@ lxc config set <name> security.nesting true && lxc restart <name>
 
 ## License
 
-[MIT](LICENSE) — © Aditya Harsh
+[GPL v3](LICENSE) — © Aditya Harsh
