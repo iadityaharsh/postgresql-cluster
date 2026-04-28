@@ -1,0 +1,63 @@
+# ================================================================
+# PostgreSQL HA Cluster Configuration — EXAMPLE
+# ================================================================
+# This is a reference for every field validate_config() expects.
+# In normal use, run ./configure.sh to generate cluster.conf
+# interactively. Copy this file to cluster.conf only if you want
+# to bypass the wizard for unattended deployments.
+# ================================================================
+
+# --- Cluster ---
+CLUSTER_NAME="pg-cluster"
+NODE_COUNT=3
+ETCD_TOKEN="replace-with-openssl-rand-hex-8"
+
+# --- Node details (one block per node, indexed from 1) ---
+NODE_1_NAME="node-01"
+NODE_1_IP="10.0.0.11"
+NODE_2_NAME="node-02"
+NODE_2_IP="10.0.0.12"
+NODE_3_NAME="node-03"
+NODE_3_IP="10.0.0.13"
+
+# --- Virtual IP ---
+# Set ENABLE_VIP="N" to skip vip-manager entirely. When enabled,
+# both VIP_ADDRESS and VIP_INTERFACE are required. VIP_NETMASK is
+# optional and defaults to 24 if not set.
+ENABLE_VIP="Y"
+VIP_ADDRESS="10.0.0.10"
+VIP_NETMASK="24"
+VIP_INTERFACE="eth0"
+
+# --- Network ---
+PG_HBA_SUBNET="10.0.0.0/24"
+
+# --- PostgreSQL ---
+PG_VERSION="18"
+PG_PORT="5432"
+PG_DATA_DIR="/var/lib/postgresql/18/main"
+PG_BIN_DIR="/usr/lib/postgresql/18/bin"
+PG_MAX_CONN="200"
+
+# --- Passwords (replace before deploying) ---
+PG_SUPERUSER_PASS="replace-me"
+PG_REPLICATOR_PASS="replace-me"
+PG_ADMIN_PASS="replace-me"
+
+# --- Patroni REST API ---
+PATRONI_API_USER="patroni"
+PATRONI_API_PASS="replace-with-openssl-rand-base64-24"
+
+# --- Internal node-to-node auth ---
+INTERNAL_SECRET="replace-with-openssl-rand-hex-32"
+
+# --- Monitoring dashboard ---
+MONITOR_PORT="8080"
+
+# --- Backup (managed via the dashboard's Backups tab) ---
+ENABLE_BACKUP="n"
+BACKUP_SCHEDULE="0 2 * * *"
+BACKUP_LOCAL_RETENTION="7"
+BORG_PASSPHRASE="replace-with-openssl-rand-base64-32"
+NFS_SERVER=""
+NFS_PATH=""

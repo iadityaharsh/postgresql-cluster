@@ -1,0 +1,94 @@
+scope: {{CLUSTER_NAME}}
+namespace: /service/
+name: {{NODE_NAME}}
+
+restapi:
+  listen: {{NODE_IP}}:8008
+  connect_address: {{NODE_IP}}:8008
+  authentication:
+    username: {{PATRONI_API_USER}}
+    password: {{PATRONI_API_PASS}}
+  certfile: /etc/patroni/ssl/server.crt
+  keyfile: /etc/patroni/ssl/server.key
+
+etcd3:
+  hosts:
+{{ETCD3_HOST_LIST}}
+  cacert: /etc/etcd/ssl/ca.crt
+  cert: /etc/etcd/ssl/server.crt
+  key: /etc/etcd/ssl/server.key
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    synchronous_mode: true
+    synchronous_node_count: 1
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        max_connections: {{PG_MAX_CONN}}
+        max_worker_processes: 8
+        max_wal_senders: 10
+        max_replication_slots: 10
+        wal_keep_size: "4GB"
+        hot_standby_feedback: "on"
+        wal_log_hints: "on"
+        synchronous_commit: "on"
+        archive_mode: "off"
+
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+  pg_hba:
+    - host replication replicator {{PG_HBA_SUBNET}} scram-sha-256
+    - host all all {{PG_HBA_SUBNET}} scram-sha-256
+    - host all all 127.0.0.1/32 scram-sha-256
+    - hostssl all all {{PG_HBA_SUBNET}} scram-sha-256
+
+  users:
+    admin:
+      password: "{{PG_ADMIN_PASS}}"
+      options:
+        - createrole
+        - createdb
+    replicator:
+      password: "{{PG_REPLICATOR_PASS}}"
+      options:
+        - replication
+
+postgresql:
+  listen: 0.0.0.0:{{PG_PORT}}
+  connect_address: {{NODE_IP}}:{{PG_PORT}}
+  data_dir: {{PG_DATA_DIR}}
+  bin_dir: {{PG_BIN_DIR}}
+  config_dir: {{PG_DATA_DIR}}
+  pgpass: /tmp/pgpass0
+  authentication:
+    replication:
+      username: replicator
+      password: "{{PG_REPLICATOR_PASS}}"
+    superuser:
+      username: postgres
+      password: "{{PG_SUPERUSER_PASS}}"
+    rewind:
+      username: postgres
+      password: "{{PG_SUPERUSER_PASS}}"
+  parameters:
+    unix_socket_directories: "/var/run/postgresql"
+    ssl: "on"
+    ssl_cert_file: "/etc/patroni/ssl/server.crt"
+    ssl_key_file: "/etc/patroni/ssl/server.key"
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
+  failover_priority: {{FAILOVER_PRIORITY}}
