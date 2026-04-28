@@ -1,9 +1,9 @@
 #!/bin/bash
 # ================================================================
-# PostgreSQL HA Cluster — TUI Configuration Wizard
+# PostgreSQL HA Cluster - TUI Configuration Wizard
 # ================================================================
 # Generates cluster.conf and auth.json.
-# Navigate with Enter (next) and ← Back button or Escape.
+# Navigate with Enter (next) and <- Back button or Escape.
 # ================================================================
 
 set -euo pipefail
@@ -20,7 +20,7 @@ H=22   # height
 if ! command -v whiptail &>/dev/null; then
     echo "Installing whiptail..."
     apt-get install -y whiptail &>/dev/null || {
-        echo "ERROR: whiptail not found — install with: apt-get install whiptail" >&2
+        echo "ERROR: whiptail not found - install with: apt-get install whiptail" >&2
         exit 1
     }
 fi
@@ -34,7 +34,7 @@ wt_input() {
     local prompt=$2 default=${3:-}
     local val
     # Temporarily disable exit-on-error for the whiptail call
-    val=$(whiptail --title "$T" --cancel-button "← Back" \
+    val=$(whiptail --title "$T" --cancel-button "<- Back" \
         --inputbox "$prompt" $H $W "$default" 3>&1 1>&2 2>&3) || return 1
     _r="$val"
 }
@@ -43,7 +43,7 @@ wt_pass() {
     local -n _r=$1
     local prompt=$2
     local val
-    val=$(whiptail --title "$T" --cancel-button "← Back" \
+    val=$(whiptail --title "$T" --cancel-button "<- Back" \
         --passwordbox "$prompt" 12 $W 3>&1 1>&2 2>&3) || return 1
     _r="$val"
 }
@@ -53,7 +53,7 @@ wt_menu() {
     local prompt=$2
     shift 2
     local val
-    val=$(whiptail --title "$T" --cancel-button "← Back" \
+    val=$(whiptail --title "$T" --cancel-button "<- Back" \
         --menu "$prompt" $H $W 8 "$@" 3>&1 1>&2 2>&3) || return 1
     _r="$val"
 }
@@ -61,7 +61,7 @@ wt_menu() {
 wt_yesno() {
     # returns 0=yes 1=no/back
     local prompt=$1 yeslabel=${2:-Yes} nolabel=${3:-No}
-    whiptail --title "$T" --cancel-button "← Back" \
+    whiptail --title "$T" --cancel-button "<- Back" \
         --yes-button "$yeslabel" --no-button "$nolabel" \
         --yesno "$prompt" $H $W 3>&1 1>&2 2>&3
 }
@@ -73,7 +73,7 @@ wt_msg() {
 
 wt_confirm() {
     # yesno with yes=confirm no=back
-    local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"← Back"}
+    local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"<- Back"}
     whiptail --title "$T" \
         --yes-button "$yeslabel" --no-button "$nolabel" \
         --yesno "$prompt" 24 $W 3>&1 1>&2 2>&3
@@ -92,18 +92,18 @@ enter_password() {
         wt_pass p1 "${label}:\n(leave empty to auto-generate a secure password)" || return 1
         if [[ -z "$p1" ]]; then
             _out=$(gen_pass)
-            wt_msg "Auto-generated password saved.\n\nIt will be written to cluster.conf — keep that file secure."
+            wt_msg "Auto-generated password saved.\n\nIt will be written to cluster.conf - keep that file secure."
             return 0
         fi
         wt_pass p2 "Confirm ${label}:" || {
-            # Back on confirm → loop to re-enter
+            # Back on confirm -> loop to re-enter
             continue
         }
         if [[ "$p1" == "$p2" ]]; then
             _out="$p1"
             return 0
         fi
-        wt_msg "Passwords do not match — please try again."
+        wt_msg "Passwords do not match - please try again."
     done
 }
 
@@ -141,10 +141,10 @@ step_welcome() {
 "Welcome to the PostgreSQL HA Cluster configuration wizard.
 
 This wizard will generate:
-  • cluster.conf  — all cluster settings
-  • auth.json     — dashboard login credentials
+  * cluster.conf  - all cluster settings
+  * auth.json     - dashboard login credentials
 
-Use Enter / OK to advance and ← Back to return
+Use Enter / OK to advance and <- Back to return
 to the previous question at any time.
 
 Press Start to begin." \
@@ -176,7 +176,7 @@ _step_update_creds() {
     wt_input DASH_USER "Dashboard username:" "${DASH_USER:-admin}" || return
     enter_password DASH_PASS "Dashboard password" || return
     _write_auth
-    wt_msg "✓ Dashboard credentials updated.
+    wt_msg "Done! Dashboard credentials updated.
 
 Copy to each node and restart the dashboard:
   scp auth.json root@<NODE_IP>:/opt/pg-monitor/
@@ -189,7 +189,7 @@ step_mode() {
         "join" "Add this node to an existing running cluster" || return 1
 }
 
-# ── Join mode (single compound step — exits on success) ──────────────────────
+# ── Join mode (single compound step - exits on success) ──────────────────────
 step_join() {
     local PRIMARY_IP="" THIS_IP="$CURRENT_IP" THIS_NAME="$CURRENT_HOSTNAME"
     local THIS_NUM="4" SECRET=""
@@ -203,10 +203,10 @@ step_join() {
     wt_pass  SECRET \
 "INTERNAL_SECRET from the existing cluster:
 
-Find it in:  cluster.conf  →  INTERNAL_SECRET
-Or via:      Dashboard → Settings → Cluster Expansion" || return 1
+Find it in:  cluster.conf  ->  INTERNAL_SECRET
+Or via:      Dashboard -> Settings -> Cluster Expansion" || return 1
 
-    wt_msg "Contacting ${PRIMARY_IP}…\nThis may take a few seconds."
+    wt_msg "Contacting ${PRIMARY_IP}...\nThis may take a few seconds."
 
     local JOIN_JSON
     JOIN_JSON=$(curl -sf --max-time 10 \
@@ -219,7 +219,7 @@ Or via:      Dashboard → Settings → Cluster Expansion" || return 1
            "import sys,json; d=json.load(sys.stdin); assert d.get('mode')=='join'" 2>/dev/null; then
         echo "$JOIN_JSON" > "${SCRIPT_DIR}/join-config.json"
         chmod 600 "${SCRIPT_DIR}/join-config.json"
-        wt_msg "✓ Join configuration saved to join-config.json.
+        wt_msg "Done! Join configuration saved to join-config.json.
 
 Next steps:
 1. Copy this directory to the new node:
@@ -232,7 +232,7 @@ Next steps:
 
     # Manual fallback
     wt_msg "Could not reach the primary API.
-Switching to manual mode — you will need to enter
+Switching to manual mode - you will need to enter
 cluster values from the existing cluster.conf."
 
     local CNAME="" PEERS="" REPL_PASS="" SUPER_PASS="" PAPI_PASS=""
@@ -260,7 +260,7 @@ print(json.dumps({
 }, indent=2))
 PYEOF
     chmod 600 "${SCRIPT_DIR}/join-config.json"
-    wt_msg "✓ Join configuration saved.
+    wt_msg "Done! Join configuration saved.
 
 Next steps:
 1. Copy this directory to the new node:
@@ -338,14 +338,14 @@ step_node_detail() {
 
     local name ip
     # Hostname sub-prompt
-    wt_input name "Node ${n} of ${NODE_COUNT} — Hostname:" "$dname" || return 1
+    wt_input name "Node ${n} of ${NODE_COUNT} - Hostname:" "$dname" || return 1
     [[ -z "$name" ]] && name="$dname"
 
-    # IP sub-prompt — Back returns to hostname, not previous major step
+    # IP sub-prompt - Back returns to hostname, not previous major step
     while true; do
-        if ! wt_input ip "Node ${n} of ${NODE_COUNT} — IP address:" "$dip"; then
-            # User pressed Back on IP → re-ask hostname
-            wt_input name "Node ${n} of ${NODE_COUNT} — Hostname:" "$name" || return 1
+        if ! wt_input ip "Node ${n} of ${NODE_COUNT} - IP address:" "$dip"; then
+            # User pressed Back on IP -> re-ask hostname
+            wt_input name "Node ${n} of ${NODE_COUNT} - Hostname:" "$name" || return 1
             [[ -z "$name" ]] && name="$dname"
             continue
         fi
@@ -368,7 +368,7 @@ address regardless of which node is active.
 
 Requires: NET_ADMIN and NET_RAW capabilities
 (standard on bare metal and most VMs; needs
- enabling on LXC containers — see the docs)." \
+ enabling on LXC containers - see the docs)." \
         "Enable VIP" "No VIP" || { rc=$?; [[ $rc -eq 1 ]] && ENABLE_VIP="N"; [[ $rc -eq 255 ]] && return 1; return 0; }
 
     ENABLE_VIP="Y"
@@ -456,7 +456,7 @@ step_review() {
     for i in $(seq 1 "$NODE_COUNT"); do
         local pad=" "
         [[ $i -lt 10 ]] && pad="  "
-        summary+="  Node ${i}:${pad}${NODE_NAMES[$((i-1))]}  —  ${NODE_IPS[$((i-1))]}\n"
+        summary+="  Node ${i}:${pad}${NODE_NAMES[$((i-1))]}  -  ${NODE_IPS[$((i-1))]}\n"
     done
     summary+="\n"
     if [[ "$ENABLE_VIP" == "Y" ]]; then
@@ -468,9 +468,9 @@ step_review() {
     summary+="  PostgreSQL:  v${PG_VERSION}  port ${PG_PORT}  max ${PG_MAX_CONN} connections\n"
     summary+="  Dashboard:   port ${MONITOR_PORT}  user '${DASH_USER}'\n"
     summary+="  Passwords:   set (not shown)\n"
-    summary+="\nPress Write Config to save, or ← Back to make changes."
+    summary+="\nPress Write Config to save, or <- Back to make changes."
 
-    wt_confirm "$summary" "Write Config" "← Back" || return 1
+    wt_confirm "$summary" "Write Config" "<- Back" || return 1
 }
 
 # ── Write output files ────────────────────────────────────────────────────────
@@ -562,10 +562,10 @@ EOF
     chmod 600 "${CONF_FILE}"
     _write_auth
 
-    wt_msg "✓ Configuration written!
+    wt_msg "Done! Configuration written!
 
-  cluster.conf  — cluster settings (chmod 600)
-  auth.json     — dashboard credentials (chmod 600)
+  cluster.conf  - cluster settings (chmod 600)
+  auth.json     - dashboard credentials (chmod 600)
 
 Next steps:
 1. Copy this directory to each other node:
@@ -591,7 +591,7 @@ Next steps:
 #   10+N passwords
 #   11+N monitoring
 #   12+N dashboard
-#   13+N review → write → exit
+#   13+N review -> write -> exit
 
 STEP=1
 while true; do
