@@ -186,8 +186,29 @@ if [ ! -f "$ETCD_SSL_DIR/ca.crt" ]; then
             -subj "/CN=etcd-ca/O=${CLUSTER_NAME}" \
             2>/dev/null
         chmod 600 "$ETCD_SSL_DIR/ca.key"
-        echo "etcd CA generated. Copy to all nodes:"
-        echo "  scp $ETCD_SSL_DIR/ca.crt $ETCD_SSL_DIR/ca.key root@<NODE_IP>:$ETCD_SSL_DIR/"
+        echo "etcd CA generated."
+
+        # Auto-distribute CA cert to all other nodes via SSH
+        echo "Distributing CA certificate to other nodes..."
+        _dist_failed=0
+        for _i in $(seq 2 "${NODE_COUNT}"); do
+            _node_ip=$(get_node_ip "$_i")
+            _node_name=$(get_node_name "$_i")
+            echo -n "  → ${_node_name} (${_node_ip})... "
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+                    "root@${_node_ip}" "mkdir -p ${ETCD_SSL_DIR}" 2>/dev/null && \
+               scp -o StrictHostKeyChecking=no -q \
+                    "${ETCD_SSL_DIR}/ca.crt" \
+                    "root@${_node_ip}:${ETCD_SSL_DIR}/ca.crt" 2>/dev/null; then
+                echo "done"
+            else
+                echo "FAILED (copy manually: scp ${ETCD_SSL_DIR}/ca.crt root@${_node_ip}:${ETCD_SSL_DIR}/ca.crt)"
+                _dist_failed=$((_dist_failed + 1))
+            fi
+        done
+        if [ "${_dist_failed}" -gt 0 ]; then
+            echo "WARNING: ${_dist_failed} node(s) could not be reached. Copy ca.crt manually before running setup on those nodes." >&2
+        fi
     else
         echo "ERROR: etcd CA not found at $ETCD_SSL_DIR/ca.crt" >&2
         echo "Copy the CA cert from Node 1 before running setup on this node:" >&2
