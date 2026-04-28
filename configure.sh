@@ -165,7 +165,8 @@ Press Start to begin." \
 }
 
 step_existing_conf() {
-    [[ ! -f "$CONF_FILE" ]] && return 0
+    # Return code 2 = transparent skip (main loop moves in current direction)
+    [[ ! -f "$CONF_FILE" ]] && return 2
 
     if wt_yesno \
 "An existing configuration was found.
@@ -607,6 +608,7 @@ Next steps:
 #   13+N review -> write -> exit
 
 STEP=1
+DIR=1   # 1=forward -1=backward
 while true; do
     FINAL_STEP=$((13 + NODE_COUNT))
 
@@ -657,8 +659,10 @@ while true; do
     esac
 
     if [[ $rc -eq 0 ]]; then
-        STEP=$((STEP + 1))
+        STEP=$((STEP + 1)); DIR=1
+    elif [[ $rc -eq 2 ]]; then
+        STEP=$((STEP + DIR))  # transparent step — skip in current direction
     else
-        STEP=$((STEP - 1))
+        STEP=$((STEP - 1)); DIR=-1
     fi
 done
