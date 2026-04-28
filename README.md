@@ -10,6 +10,10 @@ Automated setup for a production-ready PostgreSQL cluster with streaming replica
 
 Built on **Patroni + etcd + vip-manager**. Runs on bare metal, VMs, or LXC containers.
 
+<p align="center">
+  <img src="docs/pictures/dashboard-summary.png" alt="PostgreSQL Cluster Manager — Summary" width="100%">
+</p>
+
 ---
 
 ## Quick Install
@@ -78,6 +82,54 @@ Each node runs five setup steps automatically:
 └───────────────────┘ └───────────────────┘ └───────────────────┘
        PRIMARY               REPLICA               REPLICA
 ```
+
+---
+
+## Dashboard
+
+A monitoring UI ships on every node — no extra installation, no separate service. Open `http://VIP:8080` and it's there.
+
+<table>
+<tr>
+<td width="50%">
+<img src="docs/pictures/dashboard-nodes.png" width="100%">
+<br><br>
+<b>Cluster Members</b> — live node roles, replication state, PostgreSQL version, and timeline at a glance. Click any node for full detail.
+</td>
+<td width="50%">
+<img src="docs/pictures/dashboard-backups.png" width="100%">
+<br><br>
+<b>Borg Backups</b> — configure NFS or SMB storage, browse encrypted archives, and restore with one click — no CLI required.
+</td>
+</tr>
+<tr>
+<td width="50%">
+<img src="docs/pictures/node-summary.png" width="100%">
+<br><br>
+<b>Node Detail</b> — Patroni status, PostgreSQL version, timeline, memory usage, CPU load, and uptime per node.
+</td>
+<td width="50%">
+<img src="docs/pictures/dashboard-settings.png" width="100%">
+<br><br>
+<b>Settings</b> — Cloudflare Tunnel, remote access, four themes (Dark, Light, Nord Dark, Nord Light), and config backup export.
+</td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="50%">
+<img src="docs/pictures/database-summary.png" width="100%">
+<br><br>
+<b>Database Stats</b> — size, cache hit ratio, active connections, deadlocks, object counts, and transaction rates per database.
+</td>
+<td width="50%">
+<img src="docs/pictures/login-screen.png" width="100%">
+<br><br>
+<b>Secure Access</b> — scrypt-hashed passwords, session auth, CSRF protection, and rate limiting out of the box.
+</td>
+</tr>
+</table>
 
 ---
 
