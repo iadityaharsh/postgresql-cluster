@@ -4,4 +4,4 @@
 # patroni[etcd3]>=4.0.0 is required for PostgreSQL 18 support.
 
 patroni[etcd3]==4.0.4
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.12
