@@ -163,27 +163,6 @@ Press Start to begin." \
         "Start" "Exit" || return 1
 }
 
-step_existing_conf() {
-    # Return code 2 = transparent skip (main loop moves in current direction)
-    [[ ! -f "$CONF_FILE" ]] && return 2
-
-    if wt_yesno \
-"An existing configuration was found.
-
-  $CONF_FILE
-
-Do you want to overwrite it with a fresh configuration,
-or keep it and only update the dashboard credentials?" \
-        "Overwrite" "Update credentials"; then
-        return 0  # proceed with full wizard
-    else
-        local rc=$?
-        [[ $rc -eq 255 ]] && return 1  # ESC = back
-        # Update credentials only
-        _step_update_creds
-        exit 0
-    fi
-}
 
 _step_update_creds() {
     wt_input DASH_USER "Dashboard username:" "${DASH_USER:-admin}" || return
@@ -200,6 +179,30 @@ step_mode() {
     wt_menu SETUP_MODE "What would you like to do?" \
         "new"  "Create a new cluster on this machine" \
         "join" "Add this node to an existing running cluster" || return 1
+}
+
+# Routes to join wizard or cluster-name depending on SETUP_MODE.
+# Pressing Back on either returns to mode selection.
+step_new_or_join() {
+    if [[ "$SETUP_MODE" == "join" ]]; then
+        step_join || return 1
+    else
+        step_cluster_name || return 1
+    fi
+}
+
+# Handles all node detail prompts with internal back/forward navigation.
+step_all_nodes() {
+    local n=1
+    while true; do
+        if step_node_detail "$n"; then
+            n=$((n + 1))
+            [[ $n -gt $NODE_COUNT ]] && return 0
+        else
+            n=$((n - 1))
+            [[ $n -lt 1 ]] && return 1
+        fi
+    done
 }
 
 # ── Join mode (single compound step - exits on success) ──────────────────────
@@ -588,80 +591,60 @@ Next steps:
    sudo bash scripts/cluster-setup.sh"
 }
 
-# ── Main wizard loop ──────────────────────────────────────────────────────────
-#
-# Steps:
-#   1  welcome
-#   2  existing config check
-#   3  mode (new / join)
-#   4  [join: compound step then exit] OR cluster name
-#   5  node count
-#   6  which node is this
-#   7..(6+N)  node details (one step per node)
-#   7+N  vip
-#   8+N  network
-#   9+N  postgres
-#   10+N passwords
-#   11+N monitoring
-#   12+N dashboard
-#   13+N review -> write -> exit
+# ── Existing-config pre-check (runs once before the wizard) ──────────────────
+if [[ -f "$CONF_FILE" ]]; then
+    _ec=0
+    wt_yesno \
+"An existing configuration was found:
+  $CONF_FILE
 
-STEP=1
-DIR=1   # 1=forward -1=backward
-while true; do
-    FINAL_STEP=$((13 + NODE_COUNT))
-
-    if [[ $STEP -lt 1 ]]; then
-        clear
-        echo "Setup cancelled."
-        exit 1
-    fi
-
-    if [[ $STEP -gt $FINAL_STEP ]]; then
-        write_config
-        exit 0
-    fi
-
-    rc=0
-    case $STEP in
-        1)  step_welcome       || rc=$? ;;
-        2)  step_existing_conf || rc=$? ;;
-        3)  step_mode          || rc=$? ;;
-        4)
-            if [[ "$SETUP_MODE" == "join" ]]; then
-                step_join || rc=$?
-                # step_join exits on success; rc=1 means user backed out
-            else
-                step_cluster_name || rc=$?
-            fi
-            ;;
-        5)  step_node_count || rc=$? ;;
-        6)  step_this_node  || rc=$? ;;
-        *)
-            node_end=$((6 + NODE_COUNT))
-            if [[ $STEP -le $node_end ]]; then
-                step_node_detail $((STEP - 6)) || rc=$?
-            else
-                post=$((STEP - node_end))
-                case $post in
-                    1)  step_vip        || rc=$? ;;
-                    2)  step_network    || rc=$? ;;
-                    3)  step_postgres   || rc=$? ;;
-                    4)  step_passwords  || rc=$? ;;
-                    5)  step_monitoring || rc=$? ;;
-                    6)  step_dashboard  || rc=$? ;;
-                    7)  step_review     || rc=$? ;;
-                    *)  write_config; exit 0 ;;
-                esac
-            fi
-            ;;
-    esac
-
-    if [[ $rc -eq 0 ]]; then
-        STEP=$((STEP + 1)); DIR=1
-    elif [[ $rc -eq 2 ]]; then
-        STEP=$((STEP + DIR))  # transparent step — skip in current direction
+Overwrite it with a fresh configuration, or update
+the dashboard login credentials only?" \
+        "Overwrite" "Update credentials" || _ec=$?
+    if [[ $_ec -eq 0 ]]; then
+        : # overwrite — proceed with full wizard
+    elif [[ $_ec -eq 255 ]]; then
+        clear; echo "Setup cancelled."; exit 1
     else
-        STEP=$((STEP - 1)); DIR=-1
+        _step_update_creds; exit 0
+    fi
+fi
+
+# ── Main wizard ───────────────────────────────────────────────────────────────
+# Fixed ordered list of steps — no dynamic recalculation, no transparent steps.
+# Each step returns 0 (advance) or non-zero (go back).
+STEPS=(
+    step_welcome        # 0
+    step_mode           # 1
+    step_new_or_join    # 2  (cluster name for new; join wizard for join)
+    step_node_count     # 3
+    step_this_node      # 4
+    step_all_nodes      # 5  (internal per-node navigation)
+    step_vip            # 6
+    step_network        # 7
+    step_postgres       # 8
+    step_passwords      # 9
+    step_monitoring     # 10
+    step_dashboard      # 11
+    step_review         # 12
+)
+
+POS=0
+while [[ $POS -ge 0 && $POS -lt ${#STEPS[@]} ]]; do
+    rc=0
+    "${STEPS[$POS]}" || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        POS=$((POS + 1))
+    else
+        POS=$((POS - 1))
     fi
 done
+
+if [[ $POS -lt 0 ]]; then
+    clear
+    echo "Setup cancelled."
+    exit 1
+fi
+
+write_config
+exit 0
