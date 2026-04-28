@@ -8,10 +8,6 @@
 
 set -euo pipefail
 
-# Force simple terminal mode — fixes Enter key in Proxmox/xtermjs consoles
-export TERM=linux
-export DIALOGOPTS=""
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/cluster.conf"
 AUTH_FILE="${SCRIPT_DIR}/auth.json"
