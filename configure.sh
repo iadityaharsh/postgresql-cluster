@@ -8,6 +8,10 @@
 
 set -euo pipefail
 
+# Force simple terminal mode — fixes Enter key in Proxmox/xtermjs consoles
+export TERM=linux
+export DIALOGOPTS=""
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/cluster.conf"
 AUTH_FILE="${SCRIPT_DIR}/auth.json"
@@ -28,55 +32,67 @@ fi
 # ── Whiptail helpers ─────────────────────────────────────────────────────────
 # Each returns 0 (OK/Next) or 1 (Back/Cancel)
 
+_wt_tmp=""
+_wt_init_tmp() { _wt_tmp=$(mktemp); }
+_wt_read_tmp() { cat "$_wt_tmp"; rm -f "$_wt_tmp"; }
+_wt_drop_tmp() { rm -f "$_wt_tmp"; }
+
 wt_input() {
     # wt_input VARNAME "prompt" "default"
     local -n _r=$1
     local prompt=$2 default=${3:-}
-    local val
-    # Temporarily disable exit-on-error for the whiptail call
-    val=$(whiptail --title "$T" --cancel-button "<- Back" \
-        --inputbox "$prompt" $H $W "$default" 3>&1 1>&2 2>&3) || return 1
-    _r="$val"
+    _wt_init_tmp
+    if whiptail --title "$T" --cancel-button "<- Back" \
+            --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp"; then
+        _r=$(_wt_read_tmp)
+    else
+        _wt_drop_tmp; return 1
+    fi
 }
 
 wt_pass() {
     local -n _r=$1
     local prompt=$2
-    local val
-    val=$(whiptail --title "$T" --cancel-button "<- Back" \
-        --passwordbox "$prompt" 12 $W 3>&1 1>&2 2>&3) || return 1
-    _r="$val"
+    _wt_init_tmp
+    if whiptail --title "$T" --cancel-button "<- Back" \
+            --passwordbox "$prompt" 12 $W 2>"$_wt_tmp"; then
+        _r=$(_wt_read_tmp)
+    else
+        _wt_drop_tmp; return 1
+    fi
 }
 
 wt_menu() {
     local -n _r=$1
     local prompt=$2
     shift 2
-    local val
-    val=$(whiptail --title "$T" --cancel-button "<- Back" \
-        --menu "$prompt" $H $W 8 "$@" 3>&1 1>&2 2>&3) || return 1
-    _r="$val"
+    _wt_init_tmp
+    if whiptail --title "$T" --cancel-button "<- Back" \
+            --menu "$prompt" $H $W 8 "$@" 2>"$_wt_tmp"; then
+        _r=$(_wt_read_tmp)
+    else
+        _wt_drop_tmp; return 1
+    fi
 }
 
 wt_yesno() {
     # returns 0=yes 1=no/back
     local prompt=$1 yeslabel=${2:-Yes} nolabel=${3:-No}
-    whiptail --title "$T" --cancel-button "<- Back" \
+    whiptail --title "$T" \
         --yes-button "$yeslabel" --no-button "$nolabel" \
-        --yesno "$prompt" $H $W 3>&1 1>&2 2>&3
+        --yesno "$prompt" $H $W
 }
 
 wt_msg() {
     whiptail --title "$T" --ok-button "OK" \
-        --msgbox "$1" $H $W 3>&1 1>&2 2>&3 || true
+        --msgbox "$1" $H $W || true
 }
 
 wt_confirm() {
-    # yesno with yes=confirm no=back
     local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"<- Back"}
     whiptail --title "$T" \
         --yes-button "$yeslabel" --no-button "$nolabel" \
-        --yesno "$prompt" 24 $W 3>&1 1>&2 2>&3
+        --yesno "$prompt" 24 $W
 }
 
 # ── Auto-generate password helper ────────────────────────────────────────────
