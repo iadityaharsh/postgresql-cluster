@@ -11,6 +11,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONF_FILE="${SCRIPT_DIR}/cluster.conf"
 AUTH_FILE="${SCRIPT_DIR}/auth.json"
+LOG_FILE="${SCRIPT_DIR}/configure.log"
+
+_log() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" >> "$LOG_FILE"; }
+_log "=== configure.sh started (pid=$$) ==="
 
 T="PostgreSQL HA Cluster Setup"  # window title
 W=76   # width
@@ -38,8 +42,11 @@ wt_input() {
     local -n _r=$1
     local prompt=$2 default=${3:-}
     _wt_init_tmp
-    if dialog --title "$T" --cancel-label "Back" \
-            --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp"; then
+    local _drc=0
+    dialog --title "$T" --cancel-label "Back" \
+        --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_input var=$1 dialog_rc=$_drc"
+    if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
     else
         _wt_drop_tmp; return 1
@@ -50,8 +57,11 @@ wt_pass() {
     local -n _r=$1
     local prompt=$2
     _wt_init_tmp
-    if dialog --title "$T" --cancel-label "Back" \
-            --passwordbox "$prompt" 12 $W "" 2>"$_wt_tmp"; then
+    local _drc=0
+    dialog --title "$T" --cancel-label "Back" \
+        --passwordbox "$prompt" 12 $W "" 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_pass var=$1 dialog_rc=$_drc"
+    if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
     else
         _wt_drop_tmp; return 1
@@ -63,8 +73,11 @@ wt_menu() {
     local prompt=$2
     shift 2
     _wt_init_tmp
-    if dialog --title "$T" --cancel-label "Back" \
-            --menu "$prompt" $H $W 8 "$@" 2>"$_wt_tmp"; then
+    local _drc=0
+    dialog --title "$T" --cancel-label "Back" \
+        --menu "$prompt" $H $W 8 "$@" 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_menu var=$1 dialog_rc=$_drc"
+    if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
     else
         _wt_drop_tmp; return 1
@@ -632,19 +645,24 @@ STEPS=(
 POS=0
 while [[ $POS -ge 0 && $POS -lt ${#STEPS[@]} ]]; do
     rc=0
+    _log "ENTER pos=$POS step=${STEPS[$POS]}"
     "${STEPS[$POS]}" || rc=$?
     if [[ $rc -eq 0 ]]; then
+        _log "  rc=0 -> advance to pos=$((POS + 1))"
         POS=$((POS + 1))
     else
+        _log "  rc=$rc -> back to pos=$((POS - 1))"
         POS=$((POS - 1))
     fi
 done
 
 if [[ $POS -lt 0 ]]; then
+    _log "Wizard cancelled (POS=$POS)"
     clear
     echo "Setup cancelled."
     exit 1
 fi
 
+_log "Wizard complete — writing config"
 write_config
 exit 0
