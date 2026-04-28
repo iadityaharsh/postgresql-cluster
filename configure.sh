@@ -3,7 +3,7 @@
 # PostgreSQL HA Cluster - TUI Configuration Wizard
 # ================================================================
 # Generates cluster.conf and auth.json.
-# Navigate with Enter (next) and <- Back button or Escape.
+# Navigate with Enter (next) and Back button or Escape.
 # ================================================================
 
 set -euo pipefail
@@ -38,7 +38,7 @@ wt_input() {
     local -n _r=$1
     local prompt=$2 default=${3:-}
     _wt_init_tmp
-    if whiptail --title "$T" --cancel-button "<- Back" \
+    if whiptail --title "$T" --cancel-button "Back" \
             --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp"; then
         _r=$(_wt_read_tmp)
     else
@@ -50,7 +50,7 @@ wt_pass() {
     local -n _r=$1
     local prompt=$2
     _wt_init_tmp
-    if whiptail --title "$T" --cancel-button "<- Back" \
+    if whiptail --title "$T" --cancel-button "Back" \
             --passwordbox "$prompt" 12 $W 2>"$_wt_tmp"; then
         _r=$(_wt_read_tmp)
     else
@@ -63,7 +63,8 @@ wt_menu() {
     local prompt=$2
     shift 2
     _wt_init_tmp
-    if whiptail --title "$T" --cancel-button "<- Back" \
+    # Use --notags so item tags aren't shown; ESC returns 255 which we treat as Back
+    if whiptail --title "$T" --cancel-button "Back" \
             --menu "$prompt" $H $W 8 "$@" 2>"$_wt_tmp"; then
         _r=$(_wt_read_tmp)
     else
@@ -85,7 +86,7 @@ wt_msg() {
 }
 
 wt_confirm() {
-    local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"<- Back"}
+    local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"Back"}
     whiptail --title "$T" \
         --yes-button "$yeslabel" --no-button "$nolabel" \
         --yesno "$prompt" 24 $W
@@ -156,7 +157,7 @@ This wizard will generate:
   * cluster.conf  - all cluster settings
   * auth.json     - dashboard login credentials
 
-Use Enter / OK to advance and <- Back to return
+Use Enter / OK to advance and Back to return
 to the previous question at any time.
 
 Press Start to begin." \
@@ -480,9 +481,9 @@ step_review() {
     summary+="  PostgreSQL:  v${PG_VERSION}  port ${PG_PORT}  max ${PG_MAX_CONN} connections\n"
     summary+="  Dashboard:   port ${MONITOR_PORT}  user '${DASH_USER}'\n"
     summary+="  Passwords:   set (not shown)\n"
-    summary+="\nPress Write Config to save, or <- Back to make changes."
+    summary+="\nPress Write Config to save, or Back to go back."
 
-    wt_confirm "$summary" "Write Config" "<- Back" || return 1
+    wt_confirm "$summary" "Write Config" "Back" || return 1
 }
 
 # ── Write output files ────────────────────────────────────────────────────────
