@@ -20,6 +20,12 @@ T="PostgreSQL HA Cluster Setup"  # window title
 W=76   # width
 H=22   # height
 
+# Force the baseline xterm terminal type so whiptail's ncurses escape
+# sequences are interpreted correctly on all consoles (Proxmox xtermjs,
+# SSH, physical tty). Without this, non-standard TERM values cause
+# certain characters to render as black squares inside dialog boxes.
+export TERM=xterm
+
 # ── Ensure whiptail is available ─────────────────────────────────────────────
 if ! command -v whiptail &>/dev/null; then
     echo "Installing whiptail..."
