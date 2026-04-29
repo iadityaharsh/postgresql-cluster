@@ -25,11 +25,7 @@ H=22   # height
 # console) renders undefined ACS positions — including the digit '3'
 # (0x33) — as a black square. C.UTF-8 is built-in on all Debian/Ubuntu
 # systems; no locale-gen required.
-export LANG=C.UTF-8
-export LC_ALL=C.UTF-8
-export TERM=xterm
-
-# ── Ensure whiptail is available ─────────────────────────────────────────────
+# ── Ensure whiptail is available (used for menus and yes/no only) ────────────
 if ! command -v whiptail &>/dev/null; then
     echo "Installing whiptail..."
     apt-get install -y whiptail &>/dev/null || {
@@ -38,44 +34,46 @@ if ! command -v whiptail &>/dev/null; then
     }
 fi
 
-# ── Whiptail helpers ──────────────────────────────────────────────────────────
-# Each returns 0 (OK/Next) or 1 (Back/Cancel).
-# whiptail writes the selected value to stderr; captured via temp file
-# to avoid the fragile 3>&1 1>&2 2>&3 fd-swap.
+# ── UI helpers ────────────────────────────────────────────────────────────────
+# wt_input / wt_pass use plain terminal read — bypasses whiptail's inputbox
+# which renders digits as black squares in some terminal emulators (Proxmox
+# xtermjs, certain physical consoles) due to ncurses/newt ACS mode conflicts.
+# wt_menu / wt_yesno / wt_msg / wt_confirm use whiptail (renders correctly).
 
-_wt_tmp=""
-_wt_init_tmp() { _wt_tmp=$(mktemp); }
-_wt_read_tmp() { cat "$_wt_tmp"; rm -f "$_wt_tmp"; }
-_wt_drop_tmp() { rm -f "$_wt_tmp"; }
+_tui_header() {
+    clear
+    printf '\e[44;97m %-78s\e[0m\n\n' "$T"
+}
 
 wt_input() {
     local -n _r=$1
     local prompt=$2 default=${3:-}
-    _wt_init_tmp
-    local _drc=0
-    whiptail --title "$T" --cancel-button "Back" \
-        --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp" || _drc=$?
-    _log "  wt_input var=$1 rc=$_drc"
-    if [[ $_drc -eq 0 ]]; then
-        _r=$(_wt_read_tmp)
-    else
-        _wt_drop_tmp; return 1
-    fi
+    local val
+    _tui_header
+    printf '%s\n\n' "$prompt"
+    [[ -n "$default" ]] && printf '\e[2m  default: %s\e[0m\n' "$default"
+    printf '\e[2m  type "back" to return to previous step\e[0m\n\n'
+    printf '> '
+    IFS= read -r val
+    _log "  wt_input var=$1 val='$val'"
+    [[ "${val,,}" == "back" ]] && return 1
+    [[ -z "$val" ]] && val="$default"
+    _r="$val"
 }
 
 wt_pass() {
     local -n _r=$1
     local prompt=$2
-    _wt_init_tmp
-    local _drc=0
-    whiptail --title "$T" --cancel-button "Back" \
-        --passwordbox "$prompt" 12 $W 2>"$_wt_tmp" || _drc=$?
-    _log "  wt_pass var=$1 rc=$_drc"
-    if [[ $_drc -eq 0 ]]; then
-        _r=$(_wt_read_tmp)
-    else
-        _wt_drop_tmp; return 1
-    fi
+    local val
+    _tui_header
+    printf '%s\n\n' "$prompt"
+    printf '\e[2m  leave empty to auto-generate | type "back" to return\e[0m\n\n'
+    printf '> '
+    IFS= read -rs val
+    printf '\n'
+    _log "  wt_pass var=$1"
+    [[ "${val,,}" == "back" ]] && return 1
+    _r="$val"
 }
 
 wt_menu() {
