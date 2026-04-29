@@ -20,12 +20,7 @@ T="PostgreSQL HA Cluster Setup"  # window title
 W=76   # width
 H=22   # height
 
-# Force UTF-8 locale so whiptail/newt uses Unicode box drawing instead
-# of VT100 ACS linedrawing mode. In ACS mode, xterm.js (Proxmox web
-# console) renders undefined ACS positions — including the digit '3'
-# (0x33) — as a black square. C.UTF-8 is built-in on all Debian/Ubuntu
-# systems; no locale-gen required.
-# ── Ensure whiptail is available (used for menus and yes/no only) ────────────
+# ── Ensure whiptail is available ─────────────────────────────────────────────
 if ! command -v whiptail &>/dev/null; then
     echo "Installing whiptail..."
     apt-get install -y whiptail &>/dev/null || {
@@ -34,52 +29,93 @@ if ! command -v whiptail &>/dev/null; then
     }
 fi
 
-# ── UI helpers ────────────────────────────────────────────────────────────────
-# wt_input / wt_pass use plain terminal read — bypasses whiptail's inputbox
-# which renders digits as black squares in some terminal emulators (Proxmox
-# xtermjs, certain physical consoles) due to ncurses/newt ACS mode conflicts.
-# wt_menu / wt_yesno / wt_msg / wt_confirm use whiptail (renders correctly).
-
-_tui_header() {
-    clear
-    printf '\e[44;97m %-78s\e[0m\n\n' "$T"
+# ── Whiptail environment setup ────────────────────────────────────────────────
+# Two-layer fix for digits rendering as black squares in Proxmox xtermjs and
+# similar terminals, caused by newt/S-Lang using VT100 ACS linedrawing mode:
+#
+# Layer 1 — NEWT_COLORS: explicit color pairs change the ANSI codes newt emits
+# for every widget, sidestepping the specific sequence xterm.js misparses.
+#
+# Layer 2 — terminfo: strip smacs/rmacs/acsc so newt physically cannot enter
+# ACS mode. Falls back gracefully when infocmp/tic are unavailable.
+_setup_whiptail_env() {
+    export NEWT_COLORS='
+root=,blue
+border=black,lightgray
+title=black,lightgray
+roottext=black,blue
+window=black,lightgray
+textbox=black,lightgray
+acttextbox=black,lightgray
+entry=black,white
+disentry=black,lightgray
+checkbox=black,lightgray
+actcheckbox=white,blue
+emptyscale=,gray
+fullscale=,cyan
+listbox=black,lightgray
+actlistbox=white,blue
+actsellistbox=white,blue
+button=white,blue
+actbutton=white,blue
+compactbutton=black,lightgray
+label=black,lightgray
+actlabel=black,blue
+'
+    command -v infocmp &>/dev/null && command -v tic &>/dev/null || return 0
+    local _dir
+    _dir=$(mktemp -d)
+    infocmp "${TERM:-xterm}" 2>/dev/null \
+        | sed 's/smacs=[^,]*,\{0,1\}[[:space:]]*//' \
+        | sed 's/rmacs=[^,]*,\{0,1\}[[:space:]]*//' \
+        | sed 's/acsc=[^,]*,\{0,1\}[[:space:]]*//' \
+        > "${_dir}/noacs.ti"
+    sed -i '1s/^[^|]*/xterm-noacs/' "${_dir}/noacs.ti" 2>/dev/null || true
+    tic -o "$_dir" "${_dir}/noacs.ti" 2>/dev/null && {
+        export TERMINFO="$_dir"
+        export TERM=xterm-noacs
+    } || true
 }
+_setup_whiptail_env
 
-wt_input() {
-    local -n _r=$1
-    local prompt=$2 default=${3:-}
-    local val
-    _tui_header
-    printf '%s\n\n' "$prompt"
-    [[ -n "$default" ]] && printf '  (default: %s)\n' "$default"
-    printf '  (type "back" to return to previous step)\n\n'
-    printf '> '
-    IFS= read -r val
-    _log "  wt_input var=$1 val='$val'"
-    [[ "${val,,}" == "back" ]] && return 1
-    [[ -z "$val" ]] && val="$default"
-    _r="$val"
-}
-
-wt_pass() {
-    local -n _r=$1
-    local prompt=$2
-    local val
-    _tui_header
-    printf '%s\n\n' "$prompt"
-    printf '  (leave empty to auto-generate | type "back" to return)\n\n'
-    printf '> '
-    IFS= read -rs val
-    printf '\n'
-    _log "  wt_pass var=$1"
-    [[ "${val,,}" == "back" ]] && return 1
-    _r="$val"
-}
+# ── Whiptail helpers ──────────────────────────────────────────────────────────
+# Each returns 0 (OK/Next) or 1 (Back/Cancel).
+# Output is captured via temp file to avoid the fragile 3>&1/1>&2/2>&3 swap.
 
 _wt_tmp=""
 _wt_init_tmp() { _wt_tmp=$(mktemp); }
 _wt_read_tmp() { cat "$_wt_tmp"; rm -f "$_wt_tmp"; }
 _wt_drop_tmp() { rm -f "$_wt_tmp"; }
+
+wt_input() {
+    local -n _r=$1
+    local prompt=$2 default=${3:-}
+    _wt_init_tmp
+    local _drc=0
+    whiptail --title "$T" --cancel-button "Back" \
+        --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_input var=$1 rc=$_drc"
+    if [[ $_drc -eq 0 ]]; then
+        _r=$(_wt_read_tmp)
+    else
+        _wt_drop_tmp; return 1
+    fi
+}
+
+wt_pass() {
+    local -n _r=$1
+    local prompt=$2
+    _wt_init_tmp
+    local _drc=0
+    whiptail --title "$T" --cancel-button "Back" \
+        --passwordbox "$prompt" 12 $W 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_pass var=$1 rc=$_drc"
+    if [[ $_drc -eq 0 ]]; then
+        _r=$(_wt_read_tmp)
+    else
+        _wt_drop_tmp; return 1
+    fi
+}
 
 wt_menu() {
     local -n _r=$1
