@@ -20,67 +20,19 @@ T="PostgreSQL HA Cluster Setup"  # window title
 W=76   # width
 H=22   # height
 
-# ── Ensure dialog is available ───────────────────────────────────────────────
-# Force a safe, explicit color scheme so characters never render as black
-# squares regardless of terminal type (Proxmox, SSH, physical console, etc.)
-_setup_dialogrc() {
-    local rc
-    rc=$(mktemp)
-    cat > "$rc" << 'DIALOGRC'
-use_shadow      = OFF
-use_colors      = ON
-screen_color        = (WHITE,BLUE,ON)
-shadow_color        = (BLACK,BLACK,ON)
-dialog_color        = (BLACK,WHITE,OFF)
-title_color         = (BLUE,WHITE,ON)
-border_color        = (WHITE,WHITE,ON)
-border2_color       = (WHITE,WHITE,ON)
-button_active_color     = (WHITE,BLUE,ON)
-button_inactive_color   = (BLACK,WHITE,OFF)
-button_key_active_color = (WHITE,BLUE,ON)
-button_key_inactive_color = (RED,WHITE,OFF)
-button_label_active_color   = (YELLOW,BLUE,ON)
-button_label_inactive_color = (BLACK,WHITE,ON)
-inputbox_color      = (BLACK,WHITE,OFF)
-inputbox_border_color   = (WHITE,WHITE,ON)
-inputbox_border2_color  = (WHITE,WHITE,ON)
-searchbox_color     = (BLACK,WHITE,OFF)
-searchbox_title_color   = (BLUE,WHITE,ON)
-searchbox_border_color  = (WHITE,WHITE,ON)
-position_indicator_color = (BLUE,WHITE,ON)
-menubox_color       = (BLACK,WHITE,OFF)
-menubox_border_color    = (WHITE,WHITE,ON)
-menubox_border2_color   = (WHITE,WHITE,ON)
-item_color          = (BLACK,WHITE,OFF)
-item_selected_color = (WHITE,BLUE,ON)
-tag_color           = (BLUE,WHITE,ON)
-tag_selected_color  = (YELLOW,BLUE,ON)
-tag_key_color       = (BLUE,WHITE,ON)
-tag_key_selected_color  = (YELLOW,BLUE,ON)
-check_color         = (BLACK,WHITE,OFF)
-check_selected_color    = (WHITE,BLUE,ON)
-uarrow_color        = (GREEN,WHITE,ON)
-darrow_color        = (GREEN,WHITE,ON)
-itemhelp_color      = (WHITE,BLACK,OFF)
-form_active_text_color  = (WHITE,BLUE,ON)
-form_text_color     = (BLACK,WHITE,OFF)
-form_item_readonly_color = (CYAN,WHITE,ON)
-gauge_color         = (BLUE,WHITE,ON)
-DIALOGRC
-    export DIALOGRC="$rc"
-}
-_setup_dialogrc
-if ! command -v dialog &>/dev/null; then
-    echo "Installing dialog..."
-    apt-get install -y dialog &>/dev/null || {
-        echo "ERROR: dialog not found - install with: apt-get install dialog" >&2
+# ── Ensure whiptail is available ─────────────────────────────────────────────
+if ! command -v whiptail &>/dev/null; then
+    echo "Installing whiptail..."
+    apt-get install -y whiptail &>/dev/null || {
+        echo "ERROR: whiptail not found - install with: apt-get install whiptail" >&2
         exit 1
     }
 fi
 
-# ── Dialog helpers ────────────────────────────────────────────────────────────
-# Each returns 0 (OK/Next) or 1 (Back/Cancel)
-# dialog writes selected value to stderr; we capture it via a temp file.
+# ── Whiptail helpers ──────────────────────────────────────────────────────────
+# Each returns 0 (OK/Next) or 1 (Back/Cancel).
+# whiptail writes the selected value to stderr; captured via temp file
+# to avoid the fragile 3>&1 1>&2 2>&3 fd-swap.
 
 _wt_tmp=""
 _wt_init_tmp() { _wt_tmp=$(mktemp); }
@@ -92,9 +44,9 @@ wt_input() {
     local prompt=$2 default=${3:-}
     _wt_init_tmp
     local _drc=0
-    dialog --title "$T" --cancel-label "Back" \
+    whiptail --title "$T" --cancel-button "Back" \
         --inputbox "$prompt" $H $W "$default" 2>"$_wt_tmp" || _drc=$?
-    _log "  wt_input var=$1 dialog_rc=$_drc"
+    _log "  wt_input var=$1 rc=$_drc"
     if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
     else
@@ -107,9 +59,9 @@ wt_pass() {
     local prompt=$2
     _wt_init_tmp
     local _drc=0
-    dialog --title "$T" --cancel-label "Back" \
-        --passwordbox "$prompt" 12 $W "" 2>"$_wt_tmp" || _drc=$?
-    _log "  wt_pass var=$1 dialog_rc=$_drc"
+    whiptail --title "$T" --cancel-button "Back" \
+        --passwordbox "$prompt" 12 $W 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_pass var=$1 rc=$_drc"
     if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
     else
@@ -123,9 +75,9 @@ wt_menu() {
     shift 2
     _wt_init_tmp
     local _drc=0
-    dialog --title "$T" --cancel-label "Back" \
+    whiptail --title "$T" --cancel-button "Back" \
         --menu "$prompt" $H $W 8 "$@" 2>"$_wt_tmp" || _drc=$?
-    _log "  wt_menu var=$1 dialog_rc=$_drc"
+    _log "  wt_menu var=$1 rc=$_drc"
     if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
     else
@@ -134,22 +86,21 @@ wt_menu() {
 }
 
 wt_yesno() {
-    # returns 0=yes 1=no/back
     local prompt=$1 yeslabel=${2:-Yes} nolabel=${3:-No}
-    dialog --title "$T" \
-        --yes-label "$yeslabel" --no-label "$nolabel" \
+    whiptail --title "$T" \
+        --yes-button "$yeslabel" --no-button "$nolabel" \
         --yesno "$prompt" $H $W
 }
 
 wt_msg() {
-    dialog --title "$T" --ok-label "OK" \
+    whiptail --title "$T" --ok-button "OK" \
         --msgbox "$1" $H $W || true
 }
 
 wt_confirm() {
     local prompt=$1 yeslabel=${2:-"Write Config"} nolabel=${3:-"Back"}
-    dialog --title "$T" \
-        --yes-label "$yeslabel" --no-label "$nolabel" \
+    whiptail --title "$T" \
+        --yes-button "$yeslabel" --no-button "$nolabel" \
         --yesno "$prompt" 24 $W
 }
 
