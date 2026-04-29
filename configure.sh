@@ -51,8 +51,8 @@ wt_input() {
     local val
     _tui_header
     printf '%s\n\n' "$prompt"
-    [[ -n "$default" ]] && printf '\e[2m  default: %s\e[0m\n' "$default"
-    printf '\e[2m  type "back" to return to previous step\e[0m\n\n'
+    [[ -n "$default" ]] && printf '  (default: %s)\n' "$default"
+    printf '  (type "back" to return to previous step)\n\n'
     printf '> '
     IFS= read -r val
     _log "  wt_input var=$1 val='$val'"
@@ -67,7 +67,7 @@ wt_pass() {
     local val
     _tui_header
     printf '%s\n\n' "$prompt"
-    printf '\e[2m  leave empty to auto-generate | type "back" to return\e[0m\n\n'
+    printf '  (leave empty to auto-generate | type "back" to return)\n\n'
     printf '> '
     IFS= read -rs val
     printf '\n'
