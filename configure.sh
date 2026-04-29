@@ -133,6 +133,22 @@ wt_menu() {
     fi
 }
 
+wt_radiolist() {
+    local -n _r=$1
+    local prompt=$2
+    shift 2
+    _wt_init_tmp
+    local _drc=0
+    whiptail --title "$T" --cancel-button "Back" \
+        --radiolist "$prompt" $H $W 8 "$@" 2>"$_wt_tmp" || _drc=$?
+    _log "  wt_radiolist var=$1 rc=$_drc"
+    if [[ $_drc -eq 0 ]]; then
+        _r=$(_wt_read_tmp)
+    else
+        _wt_drop_tmp; return 1
+    fi
+}
+
 wt_yesno() {
     local prompt=$1 yeslabel=${2:-Yes} nolabel=${3:-No}
     whiptail --title "$T" \
@@ -237,9 +253,11 @@ Copy to each node and restart the dashboard:
 }
 
 step_mode() {
-    wt_menu SETUP_MODE "What would you like to do?" \
-        "new"  "Create a new cluster on this machine" \
-        "join" "Add this node to an existing running cluster" || return 1
+    local _sel="${SETUP_MODE:-new}"
+    wt_radiolist SETUP_MODE "What would you like to do?" \
+        "new"  "Create a new cluster on this machine"       "$( [[ "$_sel" == "new"  ]] && echo ON || echo OFF )" \
+        "join" "Add this node to an existing running cluster" "$( [[ "$_sel" == "join" ]] && echo ON || echo OFF )" \
+        || return 1
 }
 
 # Routes to join wizard or cluster-name depending on SETUP_MODE.
@@ -388,7 +406,7 @@ step_this_node() {
   Detected IP:       ${CURRENT_IP}
   Detected hostname: ${CURRENT_HOSTNAME}
 
-Enter the node number (1–${NODE_COUNT}):" \
+Enter the node number (1 to ${NODE_COUNT}):" \
             "$THIS_NODE" || return 1
         if [[ "$val" =~ ^[0-9]+$ ]] && \
            [[ "$val" -ge 1 ]] && [[ "$val" -le "$NODE_COUNT" ]]; then
