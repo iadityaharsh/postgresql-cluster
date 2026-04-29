@@ -76,6 +76,11 @@ wt_pass() {
     _r="$val"
 }
 
+_wt_tmp=""
+_wt_init_tmp() { _wt_tmp=$(mktemp); }
+_wt_read_tmp() { cat "$_wt_tmp"; rm -f "$_wt_tmp"; }
+_wt_drop_tmp() { rm -f "$_wt_tmp"; }
+
 wt_menu() {
     local -n _r=$1
     local prompt=$2
