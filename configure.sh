@@ -21,6 +21,55 @@ W=76   # width
 H=22   # height
 
 # ── Ensure dialog is available ───────────────────────────────────────────────
+# Force a safe, explicit color scheme so characters never render as black
+# squares regardless of terminal type (Proxmox, SSH, physical console, etc.)
+_setup_dialogrc() {
+    local rc
+    rc=$(mktemp)
+    cat > "$rc" << 'DIALOGRC'
+use_shadow      = OFF
+use_colors      = ON
+screen_color        = (WHITE,BLUE,ON)
+shadow_color        = (BLACK,BLACK,ON)
+dialog_color        = (BLACK,WHITE,OFF)
+title_color         = (BLUE,WHITE,ON)
+border_color        = (WHITE,WHITE,ON)
+border2_color       = (WHITE,WHITE,ON)
+button_active_color     = (WHITE,BLUE,ON)
+button_inactive_color   = (BLACK,WHITE,OFF)
+button_key_active_color = (WHITE,BLUE,ON)
+button_key_inactive_color = (RED,WHITE,OFF)
+button_label_active_color   = (YELLOW,BLUE,ON)
+button_label_inactive_color = (BLACK,WHITE,ON)
+inputbox_color      = (BLACK,WHITE,OFF)
+inputbox_border_color   = (WHITE,WHITE,ON)
+inputbox_border2_color  = (WHITE,WHITE,ON)
+searchbox_color     = (BLACK,WHITE,OFF)
+searchbox_title_color   = (BLUE,WHITE,ON)
+searchbox_border_color  = (WHITE,WHITE,ON)
+position_indicator_color = (BLUE,WHITE,ON)
+menubox_color       = (BLACK,WHITE,OFF)
+menubox_border_color    = (WHITE,WHITE,ON)
+menubox_border2_color   = (WHITE,WHITE,ON)
+item_color          = (BLACK,WHITE,OFF)
+item_selected_color = (WHITE,BLUE,ON)
+tag_color           = (BLUE,WHITE,ON)
+tag_selected_color  = (YELLOW,BLUE,ON)
+tag_key_color       = (BLUE,WHITE,ON)
+tag_key_selected_color  = (YELLOW,BLUE,ON)
+check_color         = (BLACK,WHITE,OFF)
+check_selected_color    = (WHITE,BLUE,ON)
+uarrow_color        = (GREEN,WHITE,ON)
+darrow_color        = (GREEN,WHITE,ON)
+itemhelp_color      = (WHITE,BLACK,OFF)
+form_active_text_color  = (WHITE,BLUE,ON)
+form_text_color     = (BLACK,WHITE,OFF)
+form_item_readonly_color = (CYAN,WHITE,ON)
+gauge_color         = (BLUE,WHITE,ON)
+DIALOGRC
+    export DIALOGRC="$rc"
+}
+_setup_dialogrc
 if ! command -v dialog &>/dev/null; then
     echo "Installing dialog..."
     apt-get install -y dialog &>/dev/null || {
