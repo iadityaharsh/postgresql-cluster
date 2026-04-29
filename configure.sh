@@ -20,10 +20,13 @@ T="PostgreSQL HA Cluster Setup"  # window title
 W=76   # width
 H=22   # height
 
-# Force the baseline xterm terminal type so whiptail's ncurses escape
-# sequences are interpreted correctly on all consoles (Proxmox xtermjs,
-# SSH, physical tty). Without this, non-standard TERM values cause
-# certain characters to render as black squares inside dialog boxes.
+# Force UTF-8 locale so whiptail/newt uses Unicode box drawing instead
+# of VT100 ACS linedrawing mode. In ACS mode, xterm.js (Proxmox web
+# console) renders undefined ACS positions — including the digit '3'
+# (0x33) — as a black square. C.UTF-8 is built-in on all Debian/Ubuntu
+# systems; no locale-gen required.
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
 export TERM=xterm
 
 # ── Ensure whiptail is available ─────────────────────────────────────────────
