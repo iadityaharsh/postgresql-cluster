@@ -133,14 +133,20 @@ wt_menu() {
     fi
 }
 
+# wt_radiolist VARNAME prompt [list-height] tag desc status ...
+# list-height defaults to the number of items
 wt_radiolist() {
     local -n _r=$1
-    local prompt=$2
-    shift 2
+    local _prompt=$2
+    local _lh=$3
+    shift 3
+    # Count items (triplets: tag desc status)
+    local _count=$(( $# / 3 ))
+    [[ -z "$_lh" || "$_lh" == "auto" ]] && _lh=$_count
     _wt_init_tmp
     local _drc=0
     whiptail --title "$T" --cancel-button "Back" \
-        --radiolist "$prompt" $H $W 8 "$@" 2>"$_wt_tmp" || _drc=$?
+        --radiolist "$_prompt" $H $W "$_lh" "$@" 2>"$_wt_tmp" || _drc=$?
     _log "  wt_radiolist var=$1 rc=$_drc"
     if [[ $_drc -eq 0 ]]; then
         _r=$(_wt_read_tmp)
@@ -255,11 +261,12 @@ Copy to each node and restart the dashboard:
 step_mode() {
     local _sel="${SETUP_MODE:-new}"
     local _pick
-    wt_radiolist _pick "What would you like to do?" \
-        "1" "Create a new cluster on this machine"           "$( [[ "$_sel" == "new"  ]] && echo ON || echo OFF )" \
-        "2" "Add this node to an existing running cluster"   "$( [[ "$_sel" == "join" ]] && echo ON || echo OFF )" \
+    # Tag = full label, description = empty → displays as "(*) Create a new cluster..."
+    wt_radiolist _pick "What would you like to do?" auto \
+        "Create a new cluster on this machine"          "" "$( [[ "$_sel" == "new"  ]] && echo ON || echo OFF )" \
+        "Add this node to an existing running cluster"  "" "$( [[ "$_sel" == "join" ]] && echo ON || echo OFF )" \
         || return 1
-    [[ "$_pick" == "1" ]] && SETUP_MODE="new" || SETUP_MODE="join"
+    [[ "$_pick" == "Create"* ]] && SETUP_MODE="new" || SETUP_MODE="join"
 }
 
 # Routes to join wizard or cluster-name depending on SETUP_MODE.
