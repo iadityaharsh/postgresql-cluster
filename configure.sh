@@ -254,10 +254,12 @@ Copy to each node and restart the dashboard:
 
 step_mode() {
     local _sel="${SETUP_MODE:-new}"
-    wt_radiolist SETUP_MODE "What would you like to do?" \
-        "new"  "Create a new cluster on this machine"       "$( [[ "$_sel" == "new"  ]] && echo ON || echo OFF )" \
-        "join" "Add this node to an existing running cluster" "$( [[ "$_sel" == "join" ]] && echo ON || echo OFF )" \
+    local _pick
+    wt_radiolist _pick "What would you like to do?" \
+        "1" "Create a new cluster on this machine"           "$( [[ "$_sel" == "new"  ]] && echo ON || echo OFF )" \
+        "2" "Add this node to an existing running cluster"   "$( [[ "$_sel" == "join" ]] && echo ON || echo OFF )" \
         || return 1
+    [[ "$_pick" == "1" ]] && SETUP_MODE="new" || SETUP_MODE="join"
 }
 
 # Routes to join wizard or cluster-name depending on SETUP_MODE.
