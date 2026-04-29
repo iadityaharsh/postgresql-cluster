@@ -307,7 +307,7 @@ step_cluster_name() {
 "Cluster name:
 (used in etcd, Patroni scope, and backup archive names)" \
         "${CLUSTER_NAME:-pg-cluster}" || return 1
-    [[ -z "$CLUSTER_NAME" ]] && CLUSTER_NAME="pg-cluster"
+    CLUSTER_NAME="${CLUSTER_NAME:-pg-cluster}"
 }
 
 step_node_count() {
@@ -359,23 +359,23 @@ step_node_detail() {
 
     # Pre-fill detected values for this machine
     if [[ "$n" -eq "$THIS_NODE" ]]; then
-        [[ -z "$dname" ]] && dname="$CURRENT_HOSTNAME"
-        [[ -z "$dip"   ]] && dip="$CURRENT_IP"
+        dname="${dname:-$CURRENT_HOSTNAME}"
+        dip="${dip:-$CURRENT_IP}"
     else
-        [[ -z "$dname" ]] && dname="node-$(printf '%02d' "$n")"
+        dname="${dname:-node-$(printf '%02d' "$n")}"
     fi
 
     local name ip
     # Hostname sub-prompt
     wt_input name "Node ${n} of ${NODE_COUNT} - Hostname:" "$dname" || return 1
-    [[ -z "$name" ]] && name="$dname"
+    name="${name:-$dname}"
 
     # IP sub-prompt - Back returns to hostname, not previous major step
     while true; do
         if ! wt_input ip "Node ${n} of ${NODE_COUNT} - IP address:" "$dip"; then
             # User pressed Back on IP -> re-ask hostname
             wt_input name "Node ${n} of ${NODE_COUNT} - Hostname:" "$name" || return 1
-            [[ -z "$name" ]] && name="$dname"
+            name="${name:-$dname}"
             continue
         fi
         if [[ -n "$ip" ]]; then break; fi
@@ -404,21 +404,21 @@ Requires: NET_ADMIN and NET_RAW capabilities
 
     while true; do
         wt_input VIP_ADDRESS "Virtual IP address:" "$VIP_ADDRESS" || return 1
-        [[ -n "$VIP_ADDRESS" ]] && break
+        [[ -n "$VIP_ADDRESS" ]] && break || true
         wt_msg "VIP address is required."
     done
 
     wt_input VIP_INTERFACE "Network interface (e.g. eth0, ens18):" "${VIP_INTERFACE:-eth0}" || return 1
-    [[ -z "$VIP_INTERFACE" ]] && VIP_INTERFACE="eth0"
+    VIP_INTERFACE="${VIP_INTERFACE:-eth0}"
 
     wt_input VIP_NETMASK "Subnet prefix length (e.g. 24 for /24):" "${VIP_NETMASK:-24}" || return 1
-    [[ -z "$VIP_NETMASK" ]] && VIP_NETMASK="24"
+    VIP_NETMASK="${VIP_NETMASK:-24}"
 }
 
 step_network() {
     local default_subnet
     default_subnet=$(echo "${NODE_IPS[0]}" | sed 's/\.[0-9]*$/.0\/24/')
-    [[ -z "$PG_HBA_SUBNET" ]] && PG_HBA_SUBNET="$default_subnet"
+    PG_HBA_SUBNET="${PG_HBA_SUBNET:-$default_subnet}"
 
     wt_input PG_HBA_SUBNET \
 "Allowed client subnet for pg_hba.conf:
@@ -426,7 +426,7 @@ step_network() {
 
 Example: 192.168.1.0/24" \
         "$PG_HBA_SUBNET" || return 1
-    [[ -z "$PG_HBA_SUBNET" ]] && PG_HBA_SUBNET="$default_subnet"
+    PG_HBA_SUBNET="${PG_HBA_SUBNET:-$default_subnet}"
 }
 
 step_postgres() {
@@ -434,21 +434,21 @@ step_postgres() {
 "PostgreSQL version to install:
 (if already installed on nodes, setup will detect it automatically)" \
         "${PG_VERSION:-18}" || return 1
-    [[ -z "$PG_VERSION" ]] && PG_VERSION="18"
+    PG_VERSION="${PG_VERSION:-18}"
 
     # Update directory defaults when version changes
-    [[ -z "$PG_DATA_DIR" ]] && PG_DATA_DIR="/var/lib/postgresql/${PG_VERSION}/main"
-    [[ -z "$PG_BIN_DIR"  ]] && PG_BIN_DIR="/usr/lib/postgresql/${PG_VERSION}/bin"
+    PG_DATA_DIR="${PG_DATA_DIR:-/var/lib/postgresql/${PG_VERSION}/main}"
+    PG_BIN_DIR="${PG_BIN_DIR:-/usr/lib/postgresql/${PG_VERSION}/bin}"
 
     wt_input PG_PORT "PostgreSQL port:" "${PG_PORT:-5432}" || return 1
-    [[ -z "$PG_PORT" ]] && PG_PORT="5432"
+    PG_PORT="${PG_PORT:-5432}"
 
     wt_input PG_DATA_DIR "Data directory:" "$PG_DATA_DIR" || return 1
 
     wt_input PG_BIN_DIR "Binary directory:" "$PG_BIN_DIR" || return 1
 
     wt_input PG_MAX_CONN "Maximum connections:" "${PG_MAX_CONN:-200}" || return 1
-    [[ -z "$PG_MAX_CONN" ]] && PG_MAX_CONN="200"
+    PG_MAX_CONN="${PG_MAX_CONN:-200}"
 }
 
 step_passwords() {
@@ -468,12 +468,12 @@ step_monitoring() {
 "Dashboard port:
 (the web UI will be available at http://VIP:PORT)" \
         "${MONITOR_PORT:-8080}" || return 1
-    [[ -z "$MONITOR_PORT" ]] && MONITOR_PORT="8080"
+    MONITOR_PORT="${MONITOR_PORT:-8080}"
 }
 
 step_dashboard() {
     wt_input DASH_USER "Dashboard username:" "${DASH_USER:-admin}" || return 1
-    [[ -z "$DASH_USER" ]] && DASH_USER="admin"
+    DASH_USER="${DASH_USER:-admin}"
     enter_password DASH_PASS "Dashboard password" || return 1
 }
 
