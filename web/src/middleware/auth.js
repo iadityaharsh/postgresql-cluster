@@ -98,6 +98,7 @@ const PUBLIC_PATHS = [
 
 // Paths that require a valid session cookie OR a valid X-Internal-Token header.
 const INTERNAL_PATHS = [
+  '/api/config/join-config',
   '/api/storage/apply',
   '/api/version/upgrade/apply',
   '/api/tunnel/apply',

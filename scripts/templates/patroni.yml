@@ -47,10 +47,9 @@ bootstrap:
     - data-checksums
 
   pg_hba:
-    - host replication replicator {{PG_HBA_SUBNET}} scram-sha-256
-    - host all all {{PG_HBA_SUBNET}} scram-sha-256
-    - host all all 127.0.0.1/32 scram-sha-256
+    - hostssl replication replicator {{PG_HBA_SUBNET}} scram-sha-256
     - hostssl all all {{PG_HBA_SUBNET}} scram-sha-256
+    - host all all 127.0.0.1/32 scram-sha-256
 
   users:
     admin:

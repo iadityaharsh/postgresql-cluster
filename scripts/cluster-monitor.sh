@@ -105,11 +105,10 @@ postgres ALL=(ALL) NOPASSWD: /bin/bash /opt/pg-backup/backup-run.sh
 postgres ALL=(ALL) NOPASSWD: /bin/bash /opt/pg-monitor/scripts/backup-setup.sh
 postgres ALL=(ALL) NOPASSWD: /bin/bash /opt/pg-monitor/scripts/cloudflare-tunnel.sh
 
-# Borg — locked to the specific backup repo path (no wildcards that allow arbitrary paths)
+# Borg — locked to the specific backup repo path; borg create is handled by backup-run.sh
 postgres ALL=(ALL) SETENV: NOPASSWD: /usr/bin/borg list /mnt/pg-backup/borg-repo*
 postgres ALL=(ALL) SETENV: NOPASSWD: /usr/bin/borg info /mnt/pg-backup/borg-repo*
 postgres ALL=(ALL) SETENV: NOPASSWD: /usr/bin/borg delete /mnt/pg-backup/borg-repo*
-postgres ALL=(ALL) SETENV: NOPASSWD: /usr/bin/borg create /mnt/pg-backup/borg-repo::*
 postgres ALL=(ALL) SETENV: NOPASSWD: /usr/bin/borg check /mnt/pg-backup/borg-repo*
 postgres ALL=(ALL) SETENV: NOPASSWD: /usr/bin/borg compact /mnt/pg-backup/borg-repo*
 

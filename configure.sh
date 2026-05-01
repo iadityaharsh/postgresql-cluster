@@ -280,9 +280,9 @@ Or via:      Dashboard -> Settings -> Cluster Expansion" || return 1
     wt_msg "Contacting ${PRIMARY_IP}...\nThis may take a few seconds."
 
     local JOIN_JSON
-    JOIN_JSON=$(curl -sf --max-time 10 \
+    JOIN_JSON=$(curl -sfk --max-time 10 \
         -H "X-Internal-Token: ${SECRET}" \
-        "http://${PRIMARY_IP}:8080/api/config/join-config?node_ip=${THIS_IP}&node_name=${THIS_NAME}&node_number=${THIS_NUM}" \
+        "https://${PRIMARY_IP}:8080/api/config/join-config?node_ip=${THIS_IP}&node_name=${THIS_NAME}&node_number=${THIS_NUM}" \
         2>/dev/null || true)
 
     if [[ -n "$JOIN_JSON" ]] && \
@@ -313,21 +313,24 @@ cluster values from the existing cluster.conf."
     wt_pass  SUPER_PASS "PG_SUPERUSER_PASS:" || return 1
     wt_pass  PAPI_PASS "PATRONI_API_PASS:" || return 1
 
-    python3 - > "${SCRIPT_DIR}/join-config.json" <<PYEOF
-import json
-peers = [p.strip() for p in "${PEERS}".split(',') if p.strip()]
+    CNAME="$CNAME" PEERS="$PEERS" THIS_NUM="$THIS_NUM" THIS_NAME="$THIS_NAME" \
+    THIS_IP="$THIS_IP" PAPI_PASS="$PAPI_PASS" REPL_PASS="$REPL_PASS" \
+    SUPER_PASS="$SUPER_PASS" SECRET="$SECRET" \
+    python3 - > "${SCRIPT_DIR}/join-config.json" <<'PYEOF'
+import json, os
+peers = [p.strip() for p in os.environ['PEERS'].split(',') if p.strip()]
 print(json.dumps({
     'mode': 'join',
-    'cluster_name': "${CNAME}",
-    'this_node': int("${THIS_NUM}"),
-    'this_node_name': "${THIS_NAME}",
-    'this_node_ip': "${THIS_IP}",
+    'cluster_name': os.environ['CNAME'],
+    'this_node': int(os.environ['THIS_NUM']),
+    'this_node_name': os.environ['THIS_NAME'],
+    'this_node_ip': os.environ['THIS_IP'],
     'etcd_peers': peers,
     'patroni_api_user': 'patroni',
-    'patroni_api_pass': "${PAPI_PASS}",
-    'pg_repl_pass': "${REPL_PASS}",
-    'pg_superuser_pass': "${SUPER_PASS}",
-    'internal_secret': "${SECRET}",
+    'patroni_api_pass': os.environ['PAPI_PASS'],
+    'pg_repl_pass': os.environ['REPL_PASS'],
+    'pg_superuser_pass': os.environ['SUPER_PASS'],
+    'internal_secret': os.environ['SECRET'],
 }, indent=2))
 PYEOF
     chmod 600 "${SCRIPT_DIR}/join-config.json"

@@ -359,7 +359,7 @@ module.exports = function createClusterRouter(ctx) {
 
   // GET /api/config/backup — TrueNAS-style full config backup (tar.gz, credentials included)
   router.get('/config/backup', async (req, res) => {
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
     const confPath = ctx.confPath;
     if (!fs.existsSync(confPath)) return res.status(404).json({ error: 'cluster.conf not found' });
 
@@ -399,7 +399,7 @@ module.exports = function createClusterRouter(ctx) {
       const date = new Date().toISOString().slice(0, 10);
       const tarName = `cluster-${CLUSTER_NAME}-${date}.tar.gz`;
       const tarPath = path.join(os.tmpdir(), tarName);
-      execSync(`tar -czf ${tarPath} -C ${tmpDir} .`, { timeout: 15000 });
+      execFileSync('tar', ['-czf', tarPath, '-C', tmpDir, '.'], { timeout: 15000 });
 
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', `attachment; filename="${tarName}"`);
@@ -409,13 +409,13 @@ module.exports = function createClusterRouter(ctx) {
         try { fs.unlinkSync(tarPath); } catch {}
       });
     } finally {
-      try { execSync(`rm -rf ${tmpDir}`, { timeout: 5000 }); } catch {}
+      try { execFileSync('rm', ['-rf', tmpDir], { timeout: 5000 }); } catch {}
     }
   });
 
   // POST /api/config/restore — upload a cluster backup tar.gz and restore
   router.post('/config/restore', require('express').raw({ type: 'application/octet-stream', limit: '10mb' }), async (req, res) => {
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return res.status(400).json({ error: 'No file uploaded or wrong Content-Type (expected application/octet-stream)' });
     }
@@ -432,7 +432,7 @@ module.exports = function createClusterRouter(ctx) {
       // Check for path traversal before extracting
       let entries;
       try {
-        entries = execSync(`tar -tzf ${tarPath}`, { timeout: 5000 }).toString().trim().split('\n');
+        entries = execFileSync('tar', ['-tzf', tarPath], { timeout: 5000 }).toString().trim().split('\n');
       } catch {
         restoreInProgress = false;
         return res.status(400).json({ error: 'Invalid archive — could not read tar.gz' });
@@ -444,7 +444,7 @@ module.exports = function createClusterRouter(ctx) {
       }
 
       try {
-        execSync(`tar --no-same-owner --no-overwrite-dir -xzf ${tarPath} -C ${tmpDir}`, { timeout: 15000 });
+        execFileSync('tar', ['--no-same-owner', '--no-overwrite-dir', '-xzf', tarPath, '-C', tmpDir], { timeout: 15000 });
       } catch {
         restoreInProgress = false;
         return res.status(400).json({ error: 'Invalid archive — could not extract tar.gz' });
@@ -491,7 +491,7 @@ module.exports = function createClusterRouter(ctx) {
       restoreInProgress = false;
       throw err;
     } finally {
-      try { execSync(`rm -rf ${tmpDir}`, { timeout: 5000 }); } catch {}
+      try { execFileSync('rm', ['-rf', tmpDir], { timeout: 5000 }); } catch {}
     }
   });
 
