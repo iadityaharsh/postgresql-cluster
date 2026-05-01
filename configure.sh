@@ -29,52 +29,17 @@ if ! command -v whiptail &>/dev/null; then
     }
 fi
 
+# Restore cursor if the script exits or is interrupted mid-dialog
+_cleanup() { printf '\e[?25h'; }
+trap _cleanup EXIT INT TERM
+
 # ── Whiptail environment setup ────────────────────────────────────────────────
-# Two-layer fix for digits rendering as black squares in Proxmox xtermjs and
-# similar terminals, caused by newt/S-Lang using VT100 ACS linedrawing mode:
-#
-# Layer 1 — NEWT_COLORS: explicit color pairs change the ANSI codes newt emits
-# for every widget, sidestepping the specific sequence xterm.js misparses.
-#
-# Layer 2 — terminfo: strip smacs/rmacs/acsc so newt physically cannot enter
-# ACS mode. Falls back gracefully when infocmp/tic are unavailable.
+# TERM=vt100: simpler terminal type that avoids ACS mode issues causing
+# digits to render as black squares in Proxmox xtermjs.
+# NEWT_COLORS: complete color map — blue root, lightgray dialogs.
 _setup_whiptail_env() {
-    export NEWT_COLORS='
-root=,blue
-border=black,lightgray
-title=black,lightgray
-roottext=black,blue
-window=black,lightgray
-textbox=black,lightgray
-acttextbox=black,lightgray
-entry=black,white
-disentry=black,lightgray
-checkbox=black,lightgray
-actcheckbox=white,blue
-emptyscale=,gray
-fullscale=,cyan
-listbox=black,lightgray
-actlistbox=white,blue
-actsellistbox=white,blue
-button=white,blue
-actbutton=white,blue
-compactbutton=black,lightgray
-label=black,lightgray
-actlabel=black,blue
-'
-    command -v infocmp &>/dev/null && command -v tic &>/dev/null || return 0
-    local _dir
-    _dir=$(mktemp -d)
-    infocmp "${TERM:-xterm}" 2>/dev/null \
-        | sed 's/smacs=[^,]*,\{0,1\}[[:space:]]*//' \
-        | sed 's/rmacs=[^,]*,\{0,1\}[[:space:]]*//' \
-        | sed 's/acsc=[^,]*,\{0,1\}[[:space:]]*//' \
-        > "${_dir}/noacs.ti"
-    sed -i '1s/^[^|]*/xterm-noacs/' "${_dir}/noacs.ti" 2>/dev/null || true
-    tic -o "$_dir" "${_dir}/noacs.ti" 2>/dev/null && {
-        export TERMINFO="$_dir"
-        export TERM=xterm-noacs
-    } || true
+    export TERM=vt100
+    export NEWT_COLORS='root=,blue:border=black,lightgray:title=black,lightgray:roottext=white,blue:window=black,lightgray:textbox=black,lightgray:acttextbox=black,lightgray:entry=black,white:disentry=black,lightgray:checkbox=black,lightgray:actcheckbox=blue,lightgray:emptyscale=,gray:fullscale=,cyan:listbox=black,lightgray:actlistbox=blue,lightgray:actsellistbox=white,blue:button=black,white:actbutton=white,blue:compactbutton=black,lightgray:label=black,lightgray:actlabel=black,blue'
 }
 _setup_whiptail_env
 
