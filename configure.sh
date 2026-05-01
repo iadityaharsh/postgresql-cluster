@@ -41,7 +41,7 @@ trap _cleanup EXIT INT TERM
 # digits to render as black squares in Proxmox xtermjs.
 # NEWT_COLORS: complete color map — blue root, lightgray dialogs.
 _setup_whiptail_env() {
-    export NEWT_COLORS='root=,blue:border=black,lightgray:title=black,lightgray:roottext=white,blue:window=black,lightgray:textbox=black,lightgray:acttextbox=black,lightgray:entry=black,white:disentry=black,lightgray:checkbox=black,lightgray:actcheckbox=white,blue:emptyscale=,gray:fullscale=,cyan:listbox=black,lightgray:actlistbox=white,blue:actsellistbox=white,blue:button=black,lightgray:actbutton=white,blue:compactbutton=black,lightgray:label=black,lightgray:actlabel=black,blue'
+    export NEWT_COLORS='root=,blue:border=black,lightgray:title=black,lightgray:roottext=white,blue:window=black,lightgray:textbox=black,lightgray:acttextbox=black,lightgray:entry=black,white:disentry=black,lightgray:checkbox=black,lightgray:actcheckbox=white,blue:emptyscale=,gray:fullscale=,cyan:listbox=black,lightgray:actlistbox=white,blue:actsellistbox=white,blue:button=blue,lightgray:actbutton=white,blue:compactbutton=black,lightgray:label=black,lightgray:actlabel=black,blue'
 }
 _setup_whiptail_env
 
