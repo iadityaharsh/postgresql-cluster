@@ -29,7 +29,10 @@ if ! command -v whiptail &>/dev/null; then
     }
 fi
 
-# Restore cursor if the script exits or is interrupted mid-dialog
+# Hide cursor for the whole wizard — whiptail shows selection via (*) and
+# highlight bar; the blinking terminal cursor adds nothing and lands in
+# the wrong position. Restore it unconditionally on exit or interrupt.
+printf '\e[?25l'
 _cleanup() { printf '\e[?25h'; }
 trap _cleanup EXIT INT TERM
 
